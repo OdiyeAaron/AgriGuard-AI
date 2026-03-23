@@ -155,10 +155,13 @@
 
         .prescription-box {
             margin-top: 15px;
-            padding: 12px;
+            padding: 15px;
             background: #fffbe6;
             border-radius: 10px;
             border: 1px solid #ffe58f;
+            font-size: 14px;
+            line-height: 1.5;
+            color: #555;
         }
 
         .preview-img { width: 100%; margin-top: 15px; border-radius: 15px; }
@@ -184,7 +187,7 @@
 <div class="container">
     <div id="loadingOverlay">
         <div class="spinner"></div>
-        <p style="color: var(--primary-green); font-weight: bold; margin-top: 15px;">AGRI-GUARD AI<br>Analyzing Data...</p>
+        <p style="color: var(--primary-green); font-weight: bold; margin-top: 15px;">AGRI-GUARD AI<br>Consulting Gemini Doctor...</p>
     </div>
 
     <div class="security-bar">
@@ -193,9 +196,9 @@
     </div>
 
     <div class="lang-bar">
-        <a href="{{ url_for('index', lang='en') }}" class="{% if current_lang == 'en' %}active-lang{% endif %}">English</a>
-        <a href="{{ url_for('index', lang='sw') }}" class="{% if current_lang == 'sw' %}active-lang{% endif %}">Kiswahili</a>
-        <a href="{{ url_for('index', lang='lg') }}" class="{% if current_lang == 'lg' %}active-lang{% endif %}">Luganda</a>
+        <a href="?lang=en" class="{% if current_lang == 'en' %}active-lang{% endif %}">English</a>
+        <a href="?lang=sw" class="{% if current_lang == 'sw' %}active-lang{% endif %}">Kiswahili</a>
+        <a href="?lang=lg" class="{% if current_lang == 'lg' %}active-lang{% endif %}">Luganda</a>
     </div>
 
     <h1>🌿 {{ t.title }}</h1>
@@ -204,7 +207,9 @@
         📍 {{ weather.city }} | 🌡️ {{ weather.temp }}°C | ☁️ {{ weather.desc }}
     </div>
 
-    <form id="uploadForm" action="{{ url_for('predict', lang=current_lang) }}" method="post" enctype="multipart/form-data">
+    <form id="uploadForm" action="{{ url_for('predict') }}" method="post" enctype="multipart/form-data">
+        <input type="hidden" name="lang" value="{{ current_lang }}">
+        
         <div class="upload-area" onclick="document.getElementById('fileInput').click();">
             <div id="uploadContent">
                 <span style="font-size: 50px;">📸</span><br>
@@ -221,10 +226,14 @@
     <div class="result-card">
         <h2 style="color: {{ theme_color }}; margin-top: 0;">{{ prediction }}</h2>
         <p>{{ advice }}</p>
+        
+        {% if prescription %}
         <div class="prescription-box">
-            <strong>💊 TREATMENT PLAN</strong>
-            <p>{{ prescription }}</p>
+            <strong style="color: #856404;">💊 AI TREATMENT PLAN</strong>
+            <p style="margin-top: 8px;">{{ prescription }}</p>
         </div>
+        {% endif %}
+        
         <img src="{{ image_path }}" class="preview-img">
     </div>
     {% endif %}
@@ -249,7 +258,7 @@
     const imagePreview = document.getElementById('imagePreview');
     const uploadContent = document.getElementById('uploadContent');
 
-    // 1. Handle File Selection/Camera
+    // Handle File Selection or Camera Capture
     fileInput.onchange = function() {
         if (this.files && this.files[0]) {
             const reader = new FileReader();
@@ -266,10 +275,9 @@
         }
     };
 
-    // 2. Professional Processing Logic
     function startAnalysis() {
-        // Show loading text on button
-        scanBtn.innerHTML = "⌛ PROCESSING DATA...";
+        // Change button state
+        scanBtn.innerHTML = "⌛ ANALYZING WITH AI...";
         scanBtn.style.background = "#6c757d";
         scanBtn.disabled = true;
 
@@ -280,7 +288,7 @@
         document.getElementById('uploadForm').submit();
     }
 
-    // 3. Chart logic
+    // Load Analytics Chart
     fetch('/analytics_data')
     .then(res => res.json())
     .then(data => {
@@ -302,7 +310,7 @@
                 }
             });
         }
-    }).catch(err => console.log("Initializing database history..."));
+    }).catch(err => console.log("Initializing local analytics..."));
 </script>
 </body>
 </html>
