@@ -27,15 +27,18 @@ ADMIN_PASS = "StLawrence2026"
 WEATHER_API_KEY = "488852ae787287c13660dcb6ed547f6e"
 CITY = "Kampala"
 
-# Gemini AI Configuration
-genai.configure(api_key="YOUR_GEMINI_API_KEY") # Replace with your actual key
+# --- 🤖 AI CONFIGURATION ---
+# It will first look for the key in Render's Environment Variables
+GEMINI_KEY = os.getenv("GEMINI_API_KEY", "YOUR_FALLBACK_KEY_HERE")
+genai.configure(api_key=GEMINI_KEY)
 gemini_model = genai.GenerativeModel('gemini-1.5-flash')
 
 # Load the 10-Feature XGBoost Brain
 try:
     model_brain = joblib.load('models/leaf_model.pkl')
-except:
-    print("⚠️ WARNING: leaf_model.pkl not found! Run model_trainer.py first.")
+    print("✅ XGBoost Brain Loaded Successfully")
+except Exception as e:
+    print(f"⚠️ WARNING: leaf_model.pkl load failed: {e}")
 
 # Initialize Directories
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -52,15 +55,29 @@ def login_required(f):
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-# --- 📊 DATABASE ---
+# --- 📊 DATABASE & AUTO-REPAIR ---
 def init_db():
     conn = sqlite3.connect('agriguard.db')
     cursor = conn.cursor()
-    cursor.execute('CREATE TABLE IF NOT EXISTS scans (id INTEGER PRIMARY KEY AUTOINCREMENT, filename TEXT, result TEXT, advice TEXT, prescription TEXT, timestamp TEXT)')
-    cursor.execute('CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password TEXT)')
+    # Create tables if they don't exist
+    cursor.execute('''CREATE TABLE IF NOT EXISTS scans 
+                      (id INTEGER PRIMARY KEY AUTOINCREMENT, filename TEXT, result TEXT, 
+                       advice TEXT, prescription TEXT, timestamp TEXT)''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS users 
+                      (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password TEXT)''')
+    
+    # 🔥 AUTO-REPAIR: Add prescription column if it's missing (Fixes 500 error on Render)
+    try:
+        cursor.execute("SELECT prescription FROM scans LIMIT 1")
+    except sqlite3.OperationalError:
+        print("🛠️ Repairing Database: Adding 'prescription' column...")
+        cursor.execute("ALTER TABLE scans ADD COLUMN prescription TEXT")
+        conn.commit()
+        
     conn.commit()
     conn.close()
 
+# Run database setup immediately
 init_db()
 
 def get_weather():
@@ -73,7 +90,7 @@ def get_weather():
     except: pass
     return {"temp": "--", "desc": "Offline", "city": CITY}
 
-# --- 🧠 10-FEATURE EXTRACTION (Synced with Trainer) ---
+# --- 🧠 10-FEATURE EXTRACTION ---
 def extract_10_features(filepath):
     img = cv2.imread(filepath)
     if img is None: return None
@@ -82,7 +99,7 @@ def extract_10_features(filepath):
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     total = 300 * 300
 
-    # Features 1-6: Basic Metrics
+    # Basic Metrics
     green = cv2.countNonZero(cv2.inRange(hsv, (35, 40, 40), (85, 255, 255))) / total * 100
     brown = cv2.countNonZero(cv2.inRange(hsv, (10, 40, 40), (30, 255, 255))) / total * 100
     mold = cv2.countNonZero(cv2.inRange(hsv, (0, 0, 0), (180, 255, 40))) / total * 100
@@ -91,7 +108,7 @@ def extract_10_features(filepath):
     contours, _ = cv2.findContours(cv2.Canny(gray, 100, 200), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     objects = len(contours)
 
-    # Features 7-10: Advanced Metrics
+    # Advanced Metrics
     red = cv2.countNonZero(cv2.inRange(hsv, (0, 50, 50), (10, 255, 255))) / total * 100
     yellow = cv2.countNonZero(cv2.inRange(hsv, (20, 100, 100), (30, 255, 255))) / total * 100
     flipped = cv2.flip(gray, 1)
@@ -103,16 +120,18 @@ def extract_10_features(filepath):
 # --- 💬 GEMINI AGRO-ADVICE ---
 def get_gemini_prescription(status, details):
     prompt = f"""
-    Role: Professional AI Agronomist for Agri-Guard.
-    Detection: {status} ({details}).
-    Task: If Healthy, give maintenance/storage tips. If Diseased, give organic & chemical remedies.
-    Style: Professional, bullet points, max 80 words.
+    Role: Professional AI Agronomist. 
+    Status: {status}. Observation: {details}.
+    If Healthy: Provide 3 bullet points for maintenance and storage.
+    If Diseased: Provide organic and chemical treatment remedies.
+    Max 80 words. Professional tone.
     """
     try:
         response = gemini_model.generate_content(prompt)
         return response.text
-    except:
-        return "Keep in dry conditions and monitor daily. Connectivity limited for full report."
+    except Exception as e:
+        print(f"Gemini Error: {e}")
+        return "⚠️ Advice unavailable. Keep in cool, dry conditions and consult a local agricultural officer."
 
 # --- 🚀 ROUTES ---
 
@@ -137,9 +156,12 @@ def predict():
     features = extract_10_features(save_path)
     if not features: return "Processing Error", 500
 
-    # 1. Prediction using XGBoost
-    pred_idx = model_brain.predict([features])[0]
-    
+    # 1. XGBoost Prediction
+    try:
+        pred_idx = model_brain.predict([features])[0]
+    except:
+        pred_idx = 2 # Default to Invalid if model fails
+
     mapping = {
         0: ("DISEASE DETECTED", "Biological fungal/pest stress", "#dc3545"),
         1: ("HEALTHY LEAF", "High chlorophyll & symmetry", "#28a745"),
@@ -149,10 +171,10 @@ def predict():
     
     res_title, res_desc, res_color = mapping.get(pred_idx, ("UNKNOWN", "Scan again", "#666"))
 
-    # 2. Get AI Prescription from Gemini
+    # 2. Gemini Advice
     prescription = get_gemini_prescription(res_title, res_desc)
 
-    # 3. Save Diagnostic
+    # 3. Save to DB
     conn = sqlite3.connect('agriguard.db')
     conn.execute("INSERT INTO scans (filename, result, advice, prescription, timestamp) VALUES (?, ?, ?, ?, ?)",
                  (filename, res_title, res_desc, prescription, datetime.now().strftime("%Y-%m-%d %H:%M")))
@@ -165,7 +187,6 @@ def predict():
                            image_path=url_for('static', filename='uploads/'+filename),
                            history=history, weather=get_weather())
 
-# --- 🔐 AUTH ROUTES ---
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
