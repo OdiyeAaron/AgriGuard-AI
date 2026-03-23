@@ -1,9 +1,4 @@
 flask
-opencv-python-headless
-numpy
-xgboost
-scikit-learn
+google-generativeai
 gunicorn
 requests
-google-generativeai
-joblib
