@@ -11,23 +11,24 @@ from functools import wraps
 app = Flask(__name__)
 
 # --- 🔐 SECURITY & CONFIG ---
-app.secret_key = 'agri_guard_st_lawrence_2026'
+# This key secures your sessions at St. Lawrence University
+app.secret_key = 'agri_guard_st_lawrence_2026_alpha_aaron'
 app.permanent_session_lifetime = timedelta(minutes=60)
 
-# Ensure paths use the correct folder structure
 UPLOAD_FOLDER = os.path.join('static', 'uploads')
 DATASET_FOLDER = 'dataset'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
-
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
+# Master Admin Credentials
 ADMIN_USER = "admin"
 ADMIN_PASS = "StLawrence2026"
 
+# Weather Integration for Kampala
 WEATHER_API_KEY = "488852ae787287c13660dcb6ed547f6e"
 CITY = "Kampala"
 
-# Create necessary directories
+# Initialize Directories
 for folder in [UPLOAD_FOLDER, DATASET_FOLDER]:
     os.makedirs(folder, exist_ok=True)
 
@@ -77,11 +78,6 @@ def init_db():
 
 init_db()
 
-def save_for_training(filepath, label):
-    label_dir = os.path.join(DATASET_FOLDER, label.lower().replace(" ", "_"))
-    os.makedirs(label_dir, exist_ok=True)
-    shutil.copy(filepath, os.path.join(label_dir, os.path.basename(filepath)))
-
 def get_weather():
     try:
         url = f"http://api.openweathermap.org/data/2.5/weather?q={CITY}&appid={WEATHER_API_KEY}&units=metric"
@@ -97,38 +93,24 @@ def get_weather():
         pass
     return {"temp": "--", "desc": "Offline", "city": CITY}
 
-# --- 🧠 FEATURE EXTRACTION ---
+# --- 🧠 FEATURE EXTRACTION (OpenCV) ---
 def extract_features(filepath):
     img = cv2.imread(filepath)
-    if img is None:
-        return None
-
+    if img is None: return None
     img = cv2.resize(img, (300, 300))
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
     total = 300 * 300
 
-    # Color ranges
-    green = cv2.inRange(hsv, (35, 40, 40), (85, 255, 255))
-    green_score = cv2.countNonZero(green) / total * 100
-
-    brown = cv2.inRange(hsv, (10, 40, 40), (30, 255, 255))
-    brown_score = cv2.countNonZero(brown) / total * 100
-
-    # Mold: Balanced brightness trigger
-    mold = cv2.inRange(hsv, (0, 0, 0), (180, 255, 40))
-    mold_score = cv2.countNonZero(mold) / total * 100
-
-    edges = cv2.Canny(gray, 100, 200)
-    edge_score = cv2.countNonZero(edges) / total * 100
-
+    # AI Detection Metrics
+    green = cv2.countNonZero(cv2.inRange(hsv, (35, 40, 40), (85, 255, 255))) / total * 100
+    brown = cv2.countNonZero(cv2.inRange(hsv, (10, 40, 40), (30, 255, 255))) / total * 100
+    mold = cv2.countNonZero(cv2.inRange(hsv, (0, 0, 0), (180, 255, 40))) / total * 100
+    edges = cv2.countNonZero(cv2.Canny(gray, 100, 200)) / total * 100
     texture = np.std(gray)
-
-    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    objects = len(contours)
-
-    return [green_score, brown_score, mold_score, edge_score, texture, objects]
+    contours, _ = cv2.findContours(cv2.Canny(gray, 100, 200), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    return [green, brown, mold, edges, texture, len(contours)]
 
 # --- 🚀 ROUTES ---
 
@@ -137,126 +119,127 @@ def login():
     if request.method == 'POST':
         u = request.form['username'].lower().strip()
         p = request.form['password'].strip()
+        
+        # Admin Logic
         if u == ADMIN_USER and p == ADMIN_PASS:
             session['logged_in'] = True
+            session['username'] = ADMIN_USER
             return redirect(url_for('index'))
         
+        # Farmer Logic
         conn = sqlite3.connect('agriguard.db')
         user = conn.execute("SELECT * FROM users WHERE username=? AND password=?", (u, p)).fetchone()
         conn.close()
         if user:
             session['logged_in'] = True
+            session['username'] = u
             return redirect(url_for('index'))
+        
+        return render_template('login.html', error="Invalid username or password")
     return render_template('login.html')
 
-@app.route('/logout')
-def logout():
-    session.pop('logged_in', None)
-    return redirect(url_for('login'))
+@app.route('/signup', methods=['GET', 'POST'])
+def signup():
+    if request.method == 'POST':
+        u = request.form['username'].lower().strip()
+        p = request.form['password'].strip()
+        try:
+            conn = sqlite3.connect('agriguard.db')
+            conn.execute("INSERT INTO users (username, password) VALUES (?, ?)", (u, p))
+            conn.commit()
+            conn.close()
+            return redirect(url_for('login'))
+        except sqlite3.IntegrityError:
+            return render_template('signup.html', error="Username already exists!")
+    return render_template('signup.html')
+
+@app.route('/forgot-password', methods=['GET', 'POST'])
+def forgot_password():
+    if request.method == 'POST':
+        u = request.form['username'].lower().strip()
+        p = request.form['new_password'].strip()
+        conn = sqlite3.connect('agriguard.db')
+        user = conn.execute("SELECT * FROM users WHERE username=?", (u,)).fetchone()
+        if user:
+            conn.execute("UPDATE users SET password=? WHERE username=?", (p, u))
+            conn.commit()
+            conn.close()
+            return render_template('forgot_password.html', message="Password updated successfully!")
+        conn.close()
+        return render_template('forgot_password.html', error="User not found.")
+    return render_template('forgot_password.html')
+
+@app.route('/admin-console')
+@login_required
+def admin_console():
+    if session.get('username') != ADMIN_USER:
+        return "Access Denied", 403
+    conn = sqlite3.connect('agriguard.db')
+    users = conn.execute("SELECT id, username FROM users").fetchall()
+    scans = conn.execute("SELECT timestamp, result, advice FROM scans ORDER BY id DESC").fetchall()
+    conn.close()
+    return render_template('admin.html', users=users, scans=scans)
 
 @app.route('/')
-def home():
-    return redirect(url_for('index'))
-
 @app.route('/index')
 @login_required
 def index():
     conn = sqlite3.connect('agriguard.db')
     history = conn.execute("SELECT result, timestamp FROM scans ORDER BY id DESC LIMIT 5").fetchall()
     conn.close()
-    return render_template('index.html', history=history, t=TRANSLATIONS['en'], current_lang='en', weather=get_weather())
+    return render_template('index.html', history=history, t=TRANSLATIONS['en'], weather=get_weather())
 
 @app.route('/predict', methods=['POST'])
 @login_required
 def predict():
-    try:
-        if 'file' not in request.files:
-            return "No file part"
-        
-        file = request.files['file']
-        if file.filename == '':
-            return "No selected file"
+    file = request.files.get('file')
+    if not file or not allowed_file(file.filename):
+        return "Invalid File", 400
 
-        if file and allowed_file(file.filename):
-            filename = file.filename
-            save_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            file.save(save_path)
+    filename = datetime.now().strftime("%Y%m%d_%H%M%S_") + file.filename
+    save_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    file.save(save_path)
 
-            f = extract_features(save_path)
-            if f is None:
-                return "Processing Error"
+    f = extract_features(save_path)
+    if not f: return "Processing Error", 500
 
-            green, brown, mold, edges, texture, objects = f
-            severity, cause, solution, color = "Low", "Unknown", "No action needed", "#28a745"
+    green, brown, mold, edges, texture, objects = f
+    severity, cause, solution, color = "Low", "Natural", "No action needed", "#28a745"
 
-            # --- AI LOGIC ENGINE ---
-            # 1. Reject Synthetic (Shirt Filter)
-            if objects < 5 or texture < 15:
-                result, msg, color = "INVALID OBJECT", "Synthetic material detected", "#666"
-                cause, solution = "Non-organic surface", "Please scan real crop material"
-
-            # 2. Leaf Detection
-            elif green > 15:
-                if mold > 15:
-                    result, msg, color = "DISEASE DETECTED", "Fungal infection", "#dc3545"
-                    severity, solution = "Severe", "Apply fungicide"
-                elif edges > 20:
-                    result, msg, color = "DISEASE DETECTED", "Pest attack", "#ffc107"
-                    severity, solution = "Moderate", "Use organic pesticide"
-                else:
-                    result, msg = "HEALTHY CROP", "Leaf is healthy"
-
-            # 3. Seed Detection
-            elif brown > 8 or edges > 2:
-                if mold > 11: # High sensitivity for seed rot
-                    result, msg, color = "INFECTED SEEDS", "Contamination detected", "#c82333"
-                    severity, solution = "Severe", "Discard or treat with Mancozeb"
-                else:
-                    result, msg, color = "VIABLE SEEDS", "Seeds are healthy", "#8b4513"
-                    solution = "Store in dry, cool conditions"
-            
-            else:
-                result, msg, color = "INVALID OBJECT", "Unknown object", "#666"
-
-            # Save to Database
-            save_for_training(save_path, result)
-            conn = sqlite3.connect('agriguard.db')
-            now = datetime.now().strftime("%Y-%m-%d %H:%M")
-            conn.execute("INSERT INTO scans (filename, result, advice, timestamp) VALUES (?, ?, ?, ?)",
-                         (filename, result, msg, now))
-            conn.commit()
-            history = conn.execute("SELECT result, timestamp FROM scans ORDER BY id DESC LIMIT 5").fetchall()
-            conn.close()
-
-            # Format image path for HTML
-            image_url = url_for('static', filename='uploads/' + filename)
-
-            return render_template('index.html',
-                                   prediction=result,
-                                   advice=msg,
-                                   cause=cause,
-                                   prescription=solution,
-                                   severity=severity,
-                                   theme_color=color,
-                                   image_path=image_url,
-                                   history=history,
-                                   t=TRANSLATIONS['en'],
-                                   current_lang='en',
-                                   weather=get_weather())
+    # AI Decision Tree
+    if objects < 5 or texture < 15:
+        result, msg, color = "INVALID OBJECT", "Synthetic material detected", "#666"
+    elif green > 15:
+        if mold > 15:
+            result, msg, color, severity, solution = "DISEASE DETECTED", "Fungal infection", "#dc3545", "Severe", "Apply fungicide"
+        elif edges > 20:
+            result, msg, color, severity, solution = "DISEASE DETECTED", "Pest attack", "#ffc107", "Moderate", "Use organic pesticide"
         else:
-            return "Invalid file format. Please upload JPG or PNG."
+            result, msg = "HEALTHY CROP", "Leaf is healthy"
+    elif brown > 8:
+        if mold > 11:
+            result, msg, color, severity, solution = "INFECTED SEEDS", "Contamination detected", "#c82333", "Severe", "Discard or treat"
+        else:
+            result, msg, color, solution = "VIABLE SEEDS", "Seeds are healthy", "#8b4513", "Store in dry conditions"
+    else:
+        result, msg, color = "INVALID OBJECT", "Unknown object", "#666"
 
-    except Exception as e:
-        return f"Server Error: {str(e)}"
-
-@app.route('/analytics_data')
-@login_required
-def analytics_data():
+    # Save Diagnostic to DB
     conn = sqlite3.connect('agriguard.db')
-    rows = conn.execute("SELECT result, COUNT(*) FROM scans GROUP BY result").fetchall()
+    conn.execute("INSERT INTO scans (filename, result, advice, timestamp) VALUES (?, ?, ?, ?)",
+                 (filename, result, msg, datetime.now().strftime("%Y-%m-%d %H:%M")))
+    conn.commit()
+    history = conn.execute("SELECT result, timestamp FROM scans ORDER BY id DESC LIMIT 5").fetchall()
     conn.close()
-    return jsonify({'labels': [r[0] for r in rows], 'values': [r[1] for r in rows]})
+
+    return render_template('index.html', prediction=result, advice=msg, cause=cause, prescription=solution, 
+                           severity=severity, theme_color=color, image_path=url_for('static', filename='uploads/'+filename),
+                           history=history, t=TRANSLATIONS['en'], weather=get_weather())
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
 
 if __name__ == '__main__':
-    # host 0.0.0.0 allows access from your phone on the same WiFi
     app.run(debug=True, host='0.0.0.0', port=5000)
