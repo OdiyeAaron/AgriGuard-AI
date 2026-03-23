@@ -10,11 +10,25 @@
             --dark-green: #1a472a;
             --slu-blue: #004085;
             --bg-gray: #f8fafc;
+            --anim-timing: cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* --- 🎞️ ANIMATIONS --- */
+        
+        /* The Bouncing/Floating Leaf Effect */
+        @keyframes leafBounce {
+            0%, 100% { transform: translateY(0) rotate(0deg); }
+            50% { transform: translateY(-15px) rotate(5deg); }
+        }
+
+        @keyframes slideInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
         @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
+            from { opacity: 0; }
+            to { opacity: 1; }
         }
 
         body { 
@@ -30,7 +44,17 @@
             justify-content: space-between;
             align-items: center;
             margin-bottom: 30px;
-            animation: fadeIn 0.5s ease;
+            animation: fadeIn 0.8s ease;
+        }
+
+        .brand-box { display: flex; align-items: center; gap: 15px; }
+
+        /* --- THE BOUNCING ICON --- */
+        .bouncing-leaf {
+            font-size: 40px;
+            display: inline-block;
+            animation: leafBounce 3s ease-in-out infinite;
+            filter: drop-shadow(0 5px 15px rgba(40, 167, 69, 0.2));
         }
 
         h1 { color: var(--dark-green); margin: 0; font-size: 28px; font-weight: 800; }
@@ -49,17 +73,18 @@
             font-size: 13px;
             font-weight: 600;
             border: 1px solid #e2e8f0;
+            animation: slideInUp 0.5s var(--anim-timing) both;
         }
+
+        /* Staggered entry */
+        .stat-pill:nth-child(1) { animation-delay: 0.1s; }
+        .stat-pill:nth-child(2) { animation-delay: 0.2s; }
+        .stat-pill:nth-child(3) { animation-delay: 0.3s; }
 
         .dashboard-grid { 
             display: grid; 
             grid-template-columns: 1fr 2.5fr; 
             gap: 25px; 
-            animation: fadeIn 0.7s ease;
-        }
-
-        @media (max-width: 900px) {
-            .dashboard-grid { grid-template-columns: 1fr; }
         }
 
         .card { 
@@ -68,131 +93,83 @@
             border-radius: 20px; 
             box-shadow: 0 10px 25px rgba(0,0,0,0.05); 
             border: 1px solid #edf2f7;
+            animation: slideInUp 0.8s var(--anim-timing) both;
         }
 
-        h2 { 
-            color: var(--slu-blue); 
-            font-size: 18px; 
-            margin-top: 0;
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
+        .card:nth-child(1) { animation-delay: 0.4s; }
+        .card:nth-child(2) { animation-delay: 0.5s; }
 
         table { width: 100%; border-collapse: collapse; font-size: 14px; }
-        
-        th { 
-            text-align: left; 
-            padding: 15px; 
-            background: #f1f5f9; 
-            color: #64748b;
-            font-weight: 600;
-            text-transform: uppercase;
-            font-size: 11px;
-            letter-spacing: 0.5px;
-        }
-
-        td { 
-            padding: 15px; 
-            border-bottom: 1px solid #f1f5f9; 
-            vertical-align: middle;
-        }
-
-        tr:hover { background: #fdfdfd; }
-
-        .status-pill { 
-            padding: 6px 12px; 
-            border-radius: 8px; 
-            font-size: 11px; 
-            font-weight: 800; 
-            display: inline-block;
-        }
+        th { text-align: left; padding: 15px; background: #f1f5f9; color: #64748b; font-size: 11px; text-transform: uppercase; }
+        td { padding: 15px; border-bottom: 1px solid #f1f5f9; }
 
         .btn-back {
             text-decoration: none;
             color: var(--primary-green);
             font-weight: 600;
-            font-size: 14px;
-            padding: 8px 16px;
-            border: 1.5px solid var(--primary-green);
-            border-radius: 10px;
+            padding: 10px 20px;
+            border: 2px solid var(--primary-green);
+            border-radius: 12px;
             transition: 0.3s;
         }
 
         .btn-back:hover { background: var(--primary-green); color: white; }
 
-        .user-avatar {
-            width: 32px;
-            height: 32px;
-            background: #e2e8f0;
-            border-radius: 50%;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            margin-right: 10px;
-            font-size: 12px;
-            font-weight: bold;
-            color: var(--slu-blue);
+        #live-clock {
+            font-family: monospace;
+            background: #334155;
+            color: #fff;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 14px;
         }
     </style>
 </head>
 <body>
 
     <div class="header-section">
-        <div>
-            <h1>🛡️ Agri-Guard Console</h1>
-            <p style="margin: 5px 0 0; font-size: 14px; color: #64748b;">St. Lawrence University | Faculty of IT</p>
+        <div class="brand-box">
+            <div class="bouncing-leaf">🌿</div>
+            <div>
+                <h1>Agri-Guard Console</h1>
+                <p style="margin: 5px 0 0; font-size: 13px; color: #64748b;">
+                    Project ID: 2026-BIT | <span id="live-clock">00:00:00</span>
+                </p>
+            </div>
         </div>
         <a href="/dashboard" class="btn-back">← Exit Console</a>
     </div>
 
     <div class="system-stats">
         <div class="stat-pill">🟢 Server: <span style="color: var(--primary-green);">Operational</span></div>
-        <div class="stat-pill">📡 AI Engine: <span style="color: var(--primary-green);">Gemini-3-Flash</span></div>
-        <div class="stat-pill">👥 Database: <span style="color: var(--slu-blue);">{{ users|length }} Active Farmers</span></div>
+        <div class="stat-pill">📡 AI Engine: <span style="color: var(--primary-green);">Active</span></div>
+        <div class="stat-pill">👥 Database: <span style="color: var(--slu-blue);">{{ users|length }} Total Users</span></div>
     </div>
 
     <div class="dashboard-grid">
         <div class="card">
-            <h2>👥 Active Farmers</h2>
+            <h2 style="color: var(--slu-blue); font-size: 18px;">👥 Registered Users</h2>
             <table>
-                <thead>
-                    <tr><th>User</th></tr>
-                </thead>
-                <tbody>
-                    {% for user in users %}
-                    <tr>
-                        <td>
-                            <div class="user-avatar">{{ user.username[0]|upper }}</div>
-                            <strong>{{ user.username }}</strong>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
+                {% for user in users %}
+                <tr>
+                    <td><strong>{{ user.username }}</strong></td>
+                </tr>
+                {% endfor %}
             </table>
         </div>
 
         <div class="card">
-            <h2>📜 Global Diagnostic History</h2>
+            <h2 style="color: var(--slu-blue); font-size: 18px;">📜 Global Diagnostic History</h2>
             <table>
                 <thead>
-                    <tr>
-                        <th>Timestamp</th>
-                        <th>Diagnostic Result</th>
-                        <th>AI Action Plan</th>
-                    </tr>
+                    <tr><th>Timestamp</th><th>Result</th><th>AI Action Plan</th></tr>
                 </thead>
                 <tbody>
                     {% for scan in scans %}
                     <tr>
-                        <td style="color: #64748b; font-family: monospace;">{{ scan.timestamp }}</td>
-                        <td>
-                            <span class="status-pill" style="background: #eefdf3; color: #1e7e34; border: 1px solid #c3e6cb;">
-                                {{ scan.result }}
-                            </span>
-                        </td>
-                        <td style="max-width: 300px; line-height: 1.4;">{{ scan.advice[:100] }}...</td>
+                        <td style="color: #64748b;">{{ scan.timestamp }}</td>
+                        <td><b style="color: var(--primary-green);">{{ scan.result }}</b></td>
+                        <td>{{ scan.advice[:80] }}...</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -200,11 +177,15 @@
         </div>
     </div>
 
-    <div style="margin-top: 40px; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 20px;">
-        <p style="font-size: 12px; color: #94a3b8; letter-spacing: 1px;">
-            DEVELOPED BY <strong>AARON AWAS ALPHA</strong> | 2026 BIT PROJECT
-        </p>
-    </div>
+    <script>
+        // Live Clock Script
+        function updateClock() {
+            const now = new Date();
+            document.getElementById('live-clock').innerText = now.toLocaleTimeString();
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+    </script>
 
 </body>
 </html>
