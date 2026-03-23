@@ -16,21 +16,22 @@ BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 UPLOAD_FOLDER = os.path.join(BASE_DIR, 'static', 'uploads')
 DB_PATH = os.path.join(BASE_DIR, 'agriguard.db')
 
-# Ensure folders exist
+# Ensure folders exist physically on the server
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-# Master Credentials
+# Master Credentials for Presentation
 ADMIN_USER = "admin"
 ADMIN_PASS = "StLawrence2026"
 
 # --- 🤖 GEMINI AI CONFIG ---
+# This pulls the key you set in the Render 'Environment' tab
 GEMINI_KEY = os.getenv("GEMINI_API_KEY")
 if GEMINI_KEY:
     genai.configure(api_key=GEMINI_KEY)
     model = genai.GenerativeModel('gemini-1.5-flash')
 else:
-    print("⚠️ ERROR: GEMINI_API_KEY is missing from Render Environment Variables!")
+    print("⚠️ CRITICAL ERROR: GEMINI_API_KEY is missing from Render settings!")
 
 # --- 🛡️ UTILITIES ---
 def login_required(f):
@@ -42,7 +43,7 @@ def login_required(f):
     return decorated_function
 
 def init_db():
-    """Ensures the database and table exist before any operation."""
+    """Creates the database file and table if they don't exist."""
     try:
         conn = sqlite3.connect(DB_PATH)
         conn.execute('''CREATE TABLE IF NOT EXISTS scans 
@@ -56,9 +57,9 @@ def init_db():
         conn.close()
         print(f"✅ Database initialized at {DB_PATH}")
     except Exception as e:
-        print(f"❌ Database Initialization Error: {e}")
+        print(f"❌ Database Error: {e}")
 
-# Run init on startup
+# Initialize DB on app startup
 init_db()
 
 # --- 🚀 ROUTES ---
@@ -66,7 +67,7 @@ init_db()
 @app.route('/')
 @login_required
 def index():
-    init_db() # Double check DB exists
+    # Fetch recent history for the dashboard
     try:
         conn = sqlite3.connect(DB_PATH)
         history = conn.execute("SELECT result, timestamp FROM scans ORDER BY id DESC LIMIT 5").fetchall()
@@ -82,29 +83,30 @@ def predict():
     if not file or file.filename == '':
         return redirect(url_for('index'))
 
+    # Save the file locally
     filename = datetime.now().strftime("%Y%m%d_%H%M%S_") + file.filename
     save_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     file.save(save_path)
 
     try:
-        # 1. Read image bytes
+        # 1. Read image bytes for Gemini
         with open(save_path, "rb") as f:
             image_bytes = f.read()
         
-        # 2. Multimodal Prompt
+        # 2. AI Instructions
         prompt = """
         Analyze this agricultural image. 
         1. Identify if it is a LEAF or SEED.
         2. Determine if it is HEALTHY or DISEASED.
         3. Provide 3 specific treatment steps.
         
-        Return the result in this format:
+        Format your response as:
         STATUS: [Healthy/Diseased/Invalid]
-        DETAILS: [Short description of what you see]
-        PRESCRIPTION: [3 bullet points]
+        DETAILS: [Description]
+        PRESCRIPTION: [Bullet points]
         """
         
-        # 3. Call Gemini Vision
+        # 3. Call Gemini Vision API
         response = model.generate_content([
             prompt, 
             {'mime_type': 'image/jpeg', 'data': image_bytes}
@@ -112,14 +114,14 @@ def predict():
         
         analysis_text = response.text
 
-        # Determine Status for the UI
+        # 4. Set UI Status Label
         status_label = "ANALYSIS COMPLETE"
         if "HEALTHY" in analysis_text.upper(): 
             status_label = "HEALTHY"
         elif "DISEASE" in analysis_text.upper() or "SICK" in analysis_text.upper(): 
             status_label = "DISEASE DETECTED"
 
-        # 4. Save to Database
+        # 5. Log results to SQLite
         conn = sqlite3.connect(DB_PATH)
         conn.execute("INSERT INTO scans (filename, result, advice, prescription, timestamp) VALUES (?, ?, ?, ?, ?)",
                      (filename, status_label, "AI Vision Analysis", analysis_text, datetime.now().strftime("%Y-%m-%d %H:%M")))
@@ -135,20 +137,21 @@ def predict():
     
     except Exception as e:
         print(f"Prediction Error: {e}")
-        return f"AI Analysis Failed. Error: {e}", 500
+        return f"AI Analysis Failed: {e}", 500
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        u = request.form.get('username', '').lower().strip()
-        p = request.form.get('password', '').strip()
+        # Safely capture form data
+        u = (request.form.get('username') or '').lower().strip()
+        p = (request.form.get('password') or '').strip()
         
-        # Admin check
+        # presentation login credentials
         if u == ADMIN_USER and p == ADMIN_PASS:
             session.permanent = True
             session['logged_in'] = True
             session['username'] = ADMIN_USER
-            init_db() # Create DB file on login success
+            init_db() # Ensure DB is ready on login
             return redirect(url_for('index'))
             
         return render_template('login.html', error="Invalid Credentials")
@@ -161,5 +164,6 @@ def logout():
     return redirect(url_for('login'))
 
 if __name__ == '__main__':
+    # Use Render's assigned port or default to 5000
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
