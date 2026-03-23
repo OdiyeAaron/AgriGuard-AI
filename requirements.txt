@@ -5,4 +5,4 @@ xgboost
 scikit-learn
 gunicorn
 requests
-google-generativeaigoogle-generativeai 
+google-generativeai
