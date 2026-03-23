@@ -1,6 +1,6 @@
 import os
 import sqlite3
-import google.generativeai as genai
+import requests
 from flask import Flask, render_template, request, session, redirect, url_for, jsonify
 from datetime import datetime, timedelta
 from functools import wraps
@@ -11,33 +11,55 @@ app = Flask(__name__)
 app.secret_key = 'agri_guard_alpha_2026_st_lawrence'
 app.permanent_session_lifetime = timedelta(minutes=60)
 
-# Paths - Using /tmp for Render DB stability
-BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-UPLOAD_FOLDER = os.path.join(BASE_DIR, 'static', 'uploads')
+# Paths
 DB_PATH = '/tmp/agriguard.db'
-
-# Ensure folders exist
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+os.makedirs(os.path.join(os.getcwd(), 'static', 'uploads'), exist_ok=True)
 
 # Master Credentials
 ADMIN_USER = "admin"
 ADMIN_PASS = "StLawrence2026"
 
-# --- 🤖 GEMINI AI CONFIG ---
-GEMINI_KEY = os.getenv("GEMINI_API_KEY")
+# --- 🔑 API KEYS (From Render Env) ---
+HF_TOKEN = os.getenv("HUGGINGFACE_API_KEY")
+OPENROUTER_KEY = os.getenv("OPENROUTER_API_KEY")
 
-if GEMINI_KEY:
-    # CRITICAL: 'rest' transport and v1 configuration to stop the 404 error
-    genai.configure(api_key=GEMINI_KEY, transport='rest')
-    model = genai.GenerativeModel('gemini-1.5-flash')
-else:
-    print("⚠️ CRITICAL: GEMINI_API_KEY IS MISSING IN RENDER SETTINGS!")
+# Model IDs
+# PlantVillage-optimized model for 38 classes of crop diseases
+HF_MODEL_ID = "linkanjarad/mobilenet_v2_1.0_224-plant-disease-identification"
+OR_MODEL_ID = "meta-llama/llama-3.1-8b-instruct:free"
 
-# --- 🛠️ UI DATA HELPERS ---
+# --- 🧪 AI CORE FUNCTIONS ---
+
+def detect_disease(image_bytes):
+    """Sends image to Hugging Face Inference API."""
+    api_url = f"https://api-inference.huggingface.co/models/{HF_MODEL_ID}"
+    headers = {"Authorization": f"Bearer {HF_TOKEN}"}
+    response = requests.post(api_url, headers=headers, data=image_bytes)
+    return response.json()
+
+def get_treatment_advice(disease_name):
+    """Sends detected disease to OpenRouter for South Sudan-specific advice."""
+    url = "https://openrouter.ai/api/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_KEY}",
+        "HTTP-Referer": "https://agri-guard.onrender.com",
+        "Content-Type": "application/json"
+    }
+    prompt = (f"The crop has {disease_name}. Provide 3 organic treatment steps "
+              "suitable for a farmer in South Sudan (e.g., using Neem, wood ash, or crop rotation).")
+    
+    payload = {
+        "model": OR_MODEL_ID,
+        "messages": [{"role": "user", "content": prompt}]
+    }
+    response = requests.post(url, headers=headers, json=payload)
+    return response.json()['choices'][0]['message']['content']
+
+# --- 🛠️ HELPERS ---
+
 def get_ui_context(lang='en'):
     translations = {
-        'en': {'title': 'Agri-Guard AI'},
+        'en': {'title': 'Agri-Guard Intelligence'},
         'sw': {'title': 'Agri-Guard Swahili'},
         'lg': {'title': 'Agri-Guard Luganda'}
     }
@@ -49,22 +71,17 @@ def get_ui_context(lang='en'):
     }
 
 def init_db():
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        conn.execute('''CREATE TABLE IF NOT EXISTS scans 
-                        (id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                         filename TEXT, result TEXT, advice TEXT, 
-                         prescription TEXT, timestamp TEXT)''')
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        print(f"DB Error: {e}")
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute('''CREATE TABLE IF NOT EXISTS scans 
+                    (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                     filename TEXT, result TEXT, prescription TEXT, timestamp TEXT)''')
+    conn.commit()
+    conn.close()
 
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if 'logged_in' not in session:
-            return redirect(url_for('login'))
+        if 'logged_in' not in session: return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated_function
 
@@ -79,8 +96,7 @@ def index():
         conn = sqlite3.connect(DB_PATH)
         history = conn.execute("SELECT result, timestamp FROM scans ORDER BY id DESC LIMIT 5").fetchall()
         conn.close()
-    except:
-        history = []
+    except: history = []
     return render_template('index.html', history=history, **context)
 
 @app.route('/predict', methods=['POST'])
@@ -88,76 +104,55 @@ def index():
 def predict():
     lang = request.form.get('lang', 'en')
     context = get_ui_context(lang)
-    
     file = request.files.get('file')
-    if not file or file.filename == '':
-        return redirect(url_for('index'))
+    
+    if not file: return redirect(url_for('index'))
 
-    filename = datetime.now().strftime("%Y%m%d_%H%M%S_") + file.filename
-    save_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    file.save(save_path)
-
+    image_bytes = file.read()
+    
     try:
-        with open(save_path, "rb") as f:
-            image_bytes = f.read()
+        # Step 1: Detect Disease (Hugging Face)
+        hf_results = detect_disease(image_bytes)
         
-        # Expert prompt for the judges
-        prompt = "Analyze this crop image. 1. Identify if it is a LEAF or SEED. 2. Is it HEALTHY or DISEASED? 3. Give 3 treatment steps."
-        
-        response = model.generate_content([
-            prompt, 
-            {'mime_type': 'image/jpeg', 'data': image_bytes}
-        ])
-        
-        analysis_text = response.text
-        status_label = "HEALTHY" if "HEALTHY" in analysis_text.upper() else "DISEASE DETECTED"
+        # Handle API loading/warmup
+        if isinstance(hf_results, dict) and 'estimated_time' in hf_results:
+             return render_template('index.html', prediction="AI WARMING UP", 
+                                   advice="The Neural Engine is starting. Please try again in 20 seconds.", 
+                                   **context)
+
+        top_result = hf_results[0]
+        disease_raw = top_result['label'].replace("___", " ").replace("_", " ")
+        confidence = round(top_result['score'] * 100, 1)
+
+        # Step 2: Get Treatment (OpenRouter)
+        treatment = get_treatment_advice(disease_raw)
 
         # Log to DB
         conn = sqlite3.connect(DB_PATH)
-        conn.execute("INSERT INTO scans (filename, result, advice, prescription, timestamp) VALUES (?, ?, ?, ?, ?)",
-                     (filename, status_label, "Neural Engine Analysis", analysis_text, datetime.now().strftime("%Y-%m-%d %H:%M")))
+        conn.execute("INSERT INTO scans (result, prescription, timestamp) VALUES (?, ?, ?)",
+                     (disease_raw, treatment, datetime.now().strftime("%Y-%m-%d %H:%M")))
         conn.commit()
         history = conn.execute("SELECT result, timestamp FROM scans ORDER BY id DESC LIMIT 5").fetchall()
         conn.close()
 
         return render_template('index.html', 
-                               prediction=status_label, 
-                               advice="Biometric scan successful. Neural patterns decoded.",
-                               prescription=analysis_text, 
-                               image_path=url_for('static', filename='uploads/'+filename), 
+                               prediction=f"{disease_raw} ({confidence}%)", 
+                               advice="Biometric Analysis Successful",
+                               prescription=treatment,
                                history=history,
                                **context)
-    
-    except Exception as e:
-        print(f"AI Error: {str(e)}")
-        # Safe fallback for the demo
-        return render_template('index.html', 
-                               prediction="AI ANALYSIS ERROR", 
-                               advice="The Neural Engine encountered a communication issue.",
-                               prescription=f"Technical Details: {str(e)}", 
-                               image_path=url_for('static', filename='uploads/'+filename), 
-                               history=[],
-                               **context)
 
-@app.route('/analytics_data')
-@login_required
-def analytics_data():
-    return jsonify({
-        "labels": ["Healthy", "Diseased", "Unknown"],
-        "values": [65, 25, 10]
-    })
+    except Exception as e:
+        return render_template('index.html', prediction="SYSTEM ERROR", 
+                               advice=f"Check API Keys in Render: {str(e)}", **context)
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        u = (request.form.get('username') or '').lower().strip()
-        p = (request.form.get('password') or '').strip()
-        if u == ADMIN_USER and p == ADMIN_PASS:
-            session.permanent = True
+        if request.form.get('username') == ADMIN_USER and request.form.get('password') == ADMIN_PASS:
             session['logged_in'] = True
             init_db()
             return redirect(url_for('index'))
-        return render_template('login.html', error="Invalid Credentials")
     return render_template('login.html')
 
 @app.route('/logout')
