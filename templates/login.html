@@ -5,30 +5,159 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login | Agri-Guard AI</title>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-        .login-card { background: white; padding: 40px; border-radius: 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); width: 100%; max-width: 350px; text-align: center; }
-        .uni-tag { font-size: 11px; letter-spacing: 2px; color: #666; font-weight: bold; }
-        h2 { color: #1a472a; margin: 10px 0 25px; }
-        input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 10px; box-sizing: border-box; }
-        button { width: 100%; padding: 12px; background: #28a745; color: white; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; margin-top: 10px; }
-        button:hover { background: #218838; }
-        .error { color: #dc3545; font-size: 13px; margin-bottom: 10px; }
+        :root {
+            --primary-green: #28a745;
+            --dark-green: #1a472a;
+            --slu-blue: #004085;
+            --anim-speed: 0.6s;
+        }
+
+        /* --- 🎞️ KEYFRAMES --- */
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+            100% { transform: translateY(0px); }
+        }
+
+        @keyframes pulse-green {
+            0% { box-shadow: 0 0 0 0 rgba(40, 167, 69, 0.4); }
+            70% { box-shadow: 0 0 0 15px rgba(40, 167, 69, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(40, 167, 69, 0); }
+        }
+
+        body { 
+            font-family: 'Segoe UI', sans-serif; 
+            background: linear-gradient(135deg, #f0f2f5 0%, #c2e9fb 100%); 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            height: 100vh; 
+            margin: 0; 
+            overflow: hidden;
+        }
+
+        .login-card { 
+            background: white; 
+            padding: 45px 35px; 
+            border-radius: 35px; 
+            box-shadow: 0 25px 50px rgba(0,0,0,0.1); 
+            width: 100%; 
+            max-width: 380px; 
+            text-align: center; 
+            animation: fadeInUp var(--anim-speed) ease-out forwards;
+            border: 1px solid rgba(255,255,255,0.3);
+            backdrop-filter: blur(10px);
+        }
+
+        .leaf-icon {
+            font-size: 50px;
+            display: inline-block;
+            animation: float 3s ease-in-out infinite;
+            margin-bottom: 10px;
+        }
+
+        .uni-tag { 
+            font-size: 10px; 
+            letter-spacing: 3px; 
+            color: var(--slu-blue); 
+            font-weight: 800; 
+            text-transform: uppercase;
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        h2 { 
+            color: var(--dark-green); 
+            margin: 0 0 30px; 
+            font-weight: 700;
+        }
+
+        input { 
+            width: 100%; 
+            padding: 15px; 
+            margin: 10px 0; 
+            border: 1.5px solid #eee; 
+            border-radius: 15px; 
+            box-sizing: border-box; 
+            font-size: 15px;
+            transition: all 0.3s ease;
+            background: #fdfdfd;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: var(--primary-green);
+            background: #fff;
+            transform: scale(1.02);
+        }
+
+        button { 
+            width: 100%; 
+            padding: 16px; 
+            background: var(--primary-green); 
+            color: white; 
+            border: none; 
+            border-radius: 15px; 
+            font-weight: bold; 
+            font-size: 16px;
+            cursor: pointer; 
+            margin-top: 20px; 
+            transition: all 0.3s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        button:hover { 
+            background: #218838; 
+            transform: translateY(-3px);
+            animation: pulse-green 1.5s infinite;
+        }
+
+        .error { 
+            background: #fff5f5;
+            color: #dc3545; 
+            font-size: 13px; 
+            padding: 12px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            border: 1px solid #fed7d7;
+            animation: fadeInUp 0.4s ease;
+        }
+
+        .footer {
+            margin-top: 30px;
+            font-size: 12px;
+            color: #888;
+            opacity: 0.8;
+        }
     </style>
 </head>
 <body>
     <div class="login-card">
-        <span class="uni-tag">ST. LAWRENCE UNIVERSITY</span>
-        <h2>🌿 Agri-Guard Login</h2>
+        <div class="leaf-icon">🌿</div>
+        <span class="uni-tag">St. Lawrence University</span>
+        <h2>Agri-Guard AI</h2>
         
         {% if error %}
-            <p class="error">{{ error }}</p>
+            <div class="error">❌ {{ error }}</div>
         {% endif %}
 
         <form method="POST">
-            <input type="text" name="username" placeholder="Username" required>
-            <input type="password" name="password" placeholder="Password" required>
+            <input type="text" name="username" placeholder="Admin Username" required autofocus>
+            <input type="password" name="password" placeholder="Secure Password" required>
+            
             <button type="submit">Access System</button>
         </form>
+
+        <div class="footer">
+            System Lead: <strong>Aaron Awas Alpha</strong><br>
+            BIT Department &copy; 2026
+        </div>
     </div>
 </body>
 </html>
