@@ -16,18 +16,21 @@ BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 UPLOAD_FOLDER = os.path.join(BASE_DIR, 'static', 'uploads')
 DB_PATH = '/tmp/agriguard.db'
 
+# Ensure folders exist
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-# Master Credentials for Aaron Awas Alpha
+# Master Credentials
 ADMIN_USER = "admin"
 ADMIN_PASS = "StLawrence2026"
 
 # --- 🤖 GEMINI AI CONFIG ---
+# Using 'gemini-1.5-flash-latest' to fix the 404 Model Not Found error
 GEMINI_KEY = os.getenv("GEMINI_API_KEY")
 if GEMINI_KEY:
     genai.configure(api_key=GEMINI_KEY)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    # Global model initialization
+    model = genai.GenerativeModel('gemini-1.5-flash-latest')
 
 # --- 🛠️ UI DATA HELPERS ---
 def get_ui_context(lang='en'):
@@ -40,7 +43,7 @@ def get_ui_context(lang='en'):
     return {
         't': translations.get(lang, translations['en']),
         'current_lang': lang,
-        'weather': {'city': 'Kampala', 'temp': '28', 'desc': 'Cloudy'},
+        'weather': {'city': 'Kampala', 'temp': '28', 'desc': 'Sunny'},
         'theme_color': '#28a745'
     }
 
@@ -53,7 +56,6 @@ def init_db():
                          prescription TEXT, timestamp TEXT)''')
         conn.commit()
         conn.close()
-        print(f"✅ DB initialized at {DB_PATH}")
     except Exception as e:
         print(f"DB Error: {e}")
 
@@ -92,26 +94,26 @@ def predict():
     if not file or file.filename == '':
         return redirect(url_for('index'))
 
+    # Save File
     filename = datetime.now().strftime("%Y%m%d_%H%M%S_") + file.filename
     save_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     file.save(save_path)
 
     try:
+        # Load Image for Gemini
         with open(save_path, "rb") as f:
             image_bytes = f.read()
         
-        # Expert AI Prompt
-        prompt = """Analyze this agricultural image. 
-        1. Identify if it's a LEAF or SEED. 
-        2. Determine if it's HEALTHY or DISEASED. 
-        3. Provide 3 specific organic/chemical treatment steps."""
+        # Call AI with the specific 'flash-latest' model
+        response = model.generate_content([
+            "Analyze this crop image. 1. Identify if it is a LEAF or SEED. 2. Is it HEALTHY or DISEASED? 3. Give 3 treatment steps.", 
+            {'mime_type': 'image/jpeg', 'data': image_bytes}
+        ])
         
-        response = model.generate_content([prompt, {'mime_type': 'image/jpeg', 'data': image_bytes}])
         analysis_text = response.text
-        
         status_label = "HEALTHY" if "HEALTHY" in analysis_text.upper() else "DISEASE DETECTED"
 
-        # Save result to DB
+        # Log to DB
         conn = sqlite3.connect(DB_PATH)
         conn.execute("INSERT INTO scans (filename, result, advice, prescription, timestamp) VALUES (?, ?, ?, ?, ?)",
                      (filename, status_label, "Neural Engine Analysis", analysis_text, datetime.now().strftime("%Y-%m-%d %H:%M")))
@@ -121,22 +123,29 @@ def predict():
 
         return render_template('index.html', 
                                prediction=status_label, 
-                               advice="Biometric scan complete. Neural patterns decoded.",
+                               advice="Biometric scan successful. Neural patterns decoded.",
                                prescription=analysis_text, 
                                image_path=url_for('static', filename='uploads/'+filename), 
                                history=history,
                                **context)
+    
     except Exception as e:
-        print(f"Prediction Error: {e}")
-        return f"System Error: {e}", 500
+        # Prevent "Internal Server Error" screen by showing error in the UI instead
+        print(f"AI ERROR: {str(e)}")
+        return render_template('index.html', 
+                               prediction="AI ANALYSIS ERROR", 
+                               advice="The Neural Engine encountered a communication issue.",
+                               prescription=f"Technical Details: {str(e)}", 
+                               image_path=url_for('static', filename='uploads/'+filename), 
+                               history=[],
+                               **context)
 
 @app.route('/analytics_data')
 @login_required
 def analytics_data():
-    """Powers the Chart.js doughnut chart in your UI."""
     return jsonify({
-        "labels": ["Healthy Samples", "Infected", "Molds"],
-        "values": [12, 5, 3]
+        "labels": ["Healthy", "Diseased", "Unknown"],
+        "values": [65, 25, 10]
     })
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -144,15 +153,12 @@ def login():
     if request.method == 'POST':
         u = (request.form.get('username') or '').lower().strip()
         p = (request.form.get('password') or '').strip()
-        
         if u == ADMIN_USER and p == ADMIN_PASS:
             session.permanent = True
             session['logged_in'] = True
-            init_db() # Ensure DB is ready in /tmp/
+            init_db()
             return redirect(url_for('index'))
-            
         return render_template('login.html', error="Invalid Credentials")
-    
     return render_template('login.html')
 
 @app.route('/logout')
@@ -161,7 +167,6 @@ def logout():
     return redirect(url_for('login'))
 
 if __name__ == '__main__':
-    # Initialize DB before server starts
     init_db()
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
