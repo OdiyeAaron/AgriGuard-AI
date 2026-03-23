@@ -28,17 +28,20 @@ WEATHER_API_KEY = "488852ae787287c13660dcb6ed547f6e"
 CITY = "Kampala"
 
 # --- 🤖 AI CONFIGURATION ---
-# It will first look for the key in Render's Environment Variables
 GEMINI_KEY = os.getenv("GEMINI_API_KEY", "YOUR_FALLBACK_KEY_HERE")
 genai.configure(api_key=GEMINI_KEY)
 gemini_model = genai.GenerativeModel('gemini-1.5-flash')
 
-# Load the 10-Feature XGBoost Brain
+# --- 🧠 MODEL LOADING (WITH 500-ERROR PROTECTION) ---
+class FallbackModel:
+    def predict(self, features): return [2] # Default to "Invalid" if real model is missing
+
 try:
     model_brain = joblib.load('models/leaf_model.pkl')
     print("✅ XGBoost Brain Loaded Successfully")
 except Exception as e:
-    print(f"⚠️ WARNING: leaf_model.pkl load failed: {e}")
+    print(f"⚠️ CRITICAL: leaf_model.pkl not found. Using Fallback Mode. Error: {e}")
+    model_brain = FallbackModel()
 
 # Initialize Directories
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -59,25 +62,23 @@ def allowed_file(filename):
 def init_db():
     conn = sqlite3.connect('agriguard.db')
     cursor = conn.cursor()
-    # Create tables if they don't exist
     cursor.execute('''CREATE TABLE IF NOT EXISTS scans 
                       (id INTEGER PRIMARY KEY AUTOINCREMENT, filename TEXT, result TEXT, 
                        advice TEXT, prescription TEXT, timestamp TEXT)''')
     cursor.execute('''CREATE TABLE IF NOT EXISTS users 
                       (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password TEXT)''')
     
-    # 🔥 AUTO-REPAIR: Add prescription column if it's missing (Fixes 500 error on Render)
+    # 🔥 REPAIR LOGIC: This fixes the 500 error by adding the missing column automatically
     try:
         cursor.execute("SELECT prescription FROM scans LIMIT 1")
     except sqlite3.OperationalError:
         print("🛠️ Repairing Database: Adding 'prescription' column...")
         cursor.execute("ALTER TABLE scans ADD COLUMN prescription TEXT")
         conn.commit()
-        
+            
     conn.commit()
     conn.close()
 
-# Run database setup immediately
 init_db()
 
 def get_weather():
@@ -99,7 +100,6 @@ def extract_10_features(filepath):
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     total = 300 * 300
 
-    # Basic Metrics
     green = cv2.countNonZero(cv2.inRange(hsv, (35, 40, 40), (85, 255, 255))) / total * 100
     brown = cv2.countNonZero(cv2.inRange(hsv, (10, 40, 40), (30, 255, 255))) / total * 100
     mold = cv2.countNonZero(cv2.inRange(hsv, (0, 0, 0), (180, 255, 40))) / total * 100
@@ -108,7 +108,6 @@ def extract_10_features(filepath):
     contours, _ = cv2.findContours(cv2.Canny(gray, 100, 200), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     objects = len(contours)
 
-    # Advanced Metrics
     red = cv2.countNonZero(cv2.inRange(hsv, (0, 50, 50), (10, 255, 255))) / total * 100
     yellow = cv2.countNonZero(cv2.inRange(hsv, (20, 100, 100), (30, 255, 255))) / total * 100
     flipped = cv2.flip(gray, 1)
@@ -119,19 +118,13 @@ def extract_10_features(filepath):
 
 # --- 💬 GEMINI AGRO-ADVICE ---
 def get_gemini_prescription(status, details):
-    prompt = f"""
-    Role: Professional AI Agronomist. 
-    Status: {status}. Observation: {details}.
-    If Healthy: Provide 3 bullet points for maintenance and storage.
-    If Diseased: Provide organic and chemical treatment remedies.
-    Max 80 words. Professional tone.
-    """
+    prompt = f"Role: Professional AI Agronomist. Status: {status}. Observation: {details}. Provide 3 bullet points for maintenance or treatment. Max 80 words."
     try:
         response = gemini_model.generate_content(prompt)
         return response.text
     except Exception as e:
         print(f"Gemini Error: {e}")
-        return "⚠️ Advice unavailable. Keep in cool, dry conditions and consult a local agricultural officer."
+        return "⚠️ Keep in cool, dry conditions and consult a local agricultural officer."
 
 # --- 🚀 ROUTES ---
 
@@ -156,25 +149,18 @@ def predict():
     features = extract_10_features(save_path)
     if not features: return "Processing Error", 500
 
-    # 1. XGBoost Prediction
-    try:
-        pred_idx = model_brain.predict([features])[0]
-    except:
-        pred_idx = 2 # Default to Invalid if model fails
-
+    # 1. Prediction
+    pred_idx = model_brain.predict([features])[0]
     mapping = {
         0: ("DISEASE DETECTED", "Biological fungal/pest stress", "#dc3545"),
         1: ("HEALTHY LEAF", "High chlorophyll & symmetry", "#28a745"),
         2: ("INVALID OBJECT", "Non-agricultural material", "#666"),
         3: ("HEALTHY SEEDS", "Viable grain structure", "#10b981")
     }
-    
     res_title, res_desc, res_color = mapping.get(pred_idx, ("UNKNOWN", "Scan again", "#666"))
 
-    # 2. Gemini Advice
+    # 2. Advice & Database Save
     prescription = get_gemini_prescription(res_title, res_desc)
-
-    # 3. Save to DB
     conn = sqlite3.connect('agriguard.db')
     conn.execute("INSERT INTO scans (filename, result, advice, prescription, timestamp) VALUES (?, ?, ?, ?, ?)",
                  (filename, res_title, res_desc, prescription, datetime.now().strftime("%Y-%m-%d %H:%M")))
@@ -194,7 +180,6 @@ def login():
         if u == ADMIN_USER and p == ADMIN_PASS:
             session.update({'logged_in': True, 'username': ADMIN_USER})
             return redirect(url_for('index'))
-        
         conn = sqlite3.connect('agriguard.db')
         user = conn.execute("SELECT * FROM users WHERE username=? AND password=?", (u, p)).fetchone()
         conn.close()
