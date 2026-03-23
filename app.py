@@ -20,17 +20,19 @@ DB_PATH = '/tmp/agriguard.db'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-# Master Credentials
+# Master Credentials for Aaron Awas Alpha
 ADMIN_USER = "admin"
 ADMIN_PASS = "StLawrence2026"
 
 # --- 🤖 GEMINI AI CONFIG ---
-# Using 'gemini-1.5-flash-latest' to fix the 404 Model Not Found error
 GEMINI_KEY = os.getenv("GEMINI_API_KEY")
+
 if GEMINI_KEY:
-    genai.configure(api_key=GEMINI_KEY)
-    # Global model initialization
-    model = genai.GenerativeModel('gemini-1.5-flash-latest')
+    # 'transport=rest' fixes the 404/v1beta error on cloud servers like Render
+    genai.configure(api_key=GEMINI_KEY, transport='rest')
+    model = genai.GenerativeModel('gemini-1.5-flash')
+else:
+    print("⚠️ CRITICAL: GEMINI_API_KEY is missing from Render Environment Variables!")
 
 # --- 🛠️ UI DATA HELPERS ---
 def get_ui_context(lang='en'):
@@ -104,7 +106,7 @@ def predict():
         with open(save_path, "rb") as f:
             image_bytes = f.read()
         
-        # Call AI with the specific 'flash-latest' model
+        # Call AI
         response = model.generate_content([
             "Analyze this crop image. 1. Identify if it is a LEAF or SEED. 2. Is it HEALTHY or DISEASED? 3. Give 3 treatment steps.", 
             {'mime_type': 'image/jpeg', 'data': image_bytes}
@@ -123,14 +125,14 @@ def predict():
 
         return render_template('index.html', 
                                prediction=status_label, 
-                               advice="Biometric scan successful. Neural patterns decoded.",
+                               advice="Neural Engine Analysis Complete",
                                prescription=analysis_text, 
                                image_path=url_for('static', filename='uploads/'+filename), 
                                history=history,
                                **context)
     
     except Exception as e:
-        # Prevent "Internal Server Error" screen by showing error in the UI instead
+        # Show specific error in the UI instead of crashing
         print(f"AI ERROR: {str(e)}")
         return render_template('index.html', 
                                prediction="AI ANALYSIS ERROR", 
@@ -144,8 +146,8 @@ def predict():
 @login_required
 def analytics_data():
     return jsonify({
-        "labels": ["Healthy", "Diseased", "Unknown"],
-        "values": [65, 25, 10]
+        "labels": ["Healthy", "Diseased", "Molds"],
+        "values": [15, 8, 4]
     })
 
 @app.route('/login', methods=['GET', 'POST'])
