@@ -9,10 +9,14 @@ app = Flask(__name__)
 
 # --- 🔐 CONFIG ---
 app.secret_key = 'agri_guard_alpha_2026_st_lawrence'
+app.permanent_session_lifetime = timedelta(minutes=60)
+
+# Render-safe Absolute Paths
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 UPLOAD_FOLDER = os.path.join(BASE_DIR, 'static', 'uploads')
 DB_PATH = os.path.join(BASE_DIR, 'agriguard.db')
 
+# Ensure folders exist
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
@@ -21,13 +25,12 @@ ADMIN_USER = "admin"
 ADMIN_PASS = "StLawrence2026"
 
 # --- 🤖 GEMINI AI CONFIG ---
-# Ensure "GEMINI_API_KEY" is set in Render Environment Variables
 GEMINI_KEY = os.getenv("GEMINI_API_KEY")
 if GEMINI_KEY:
     genai.configure(api_key=GEMINI_KEY)
     model = genai.GenerativeModel('gemini-1.5-flash')
 else:
-    print("⚠️ ERROR: GEMINI_API_KEY is missing!")
+    print("⚠️ ERROR: GEMINI_API_KEY is missing from Render Environment Variables!")
 
 # --- 🛡️ UTILITIES ---
 def login_required(f):
@@ -39,13 +42,23 @@ def login_required(f):
     return decorated_function
 
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute('''CREATE TABLE IF NOT EXISTS scans 
-                    (id INTEGER PRIMARY KEY AUTOINCREMENT, filename TEXT, result TEXT, 
-                     advice TEXT, prescription TEXT, timestamp TEXT)''')
-    conn.commit()
-    conn.close()
+    """Ensures the database and table exist before any operation."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute('''CREATE TABLE IF NOT EXISTS scans 
+                        (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                         filename TEXT, 
+                         result TEXT, 
+                         advice TEXT, 
+                         prescription TEXT, 
+                         timestamp TEXT)''')
+        conn.commit()
+        conn.close()
+        print(f"✅ Database initialized at {DB_PATH}")
+    except Exception as e:
+        print(f"❌ Database Initialization Error: {e}")
 
+# Run init on startup
 init_db()
 
 # --- 🚀 ROUTES ---
@@ -53,16 +66,21 @@ init_db()
 @app.route('/')
 @login_required
 def index():
-    conn = sqlite3.connect(DB_PATH)
-    history = conn.execute("SELECT result, timestamp FROM scans ORDER BY id DESC LIMIT 5").fetchall()
-    conn.close()
+    init_db() # Double check DB exists
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        history = conn.execute("SELECT result, timestamp FROM scans ORDER BY id DESC LIMIT 5").fetchall()
+        conn.close()
+    except:
+        history = []
     return render_template('index.html', history=history)
 
 @app.route('/predict', methods=['POST'])
 @login_required
 def predict():
     file = request.files.get('file')
-    if not file: return redirect(url_for('index'))
+    if not file or file.filename == '':
+        return redirect(url_for('index'))
 
     filename = datetime.now().strftime("%Y%m%d_%H%M%S_") + file.filename
     save_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
@@ -96,8 +114,10 @@ def predict():
 
         # Determine Status for the UI
         status_label = "ANALYSIS COMPLETE"
-        if "HEALTHY" in analysis_text.upper(): status_label = "HEALTHY"
-        elif "DISEASED" in analysis_text.upper(): status_label = "DISEASE DETECTED"
+        if "HEALTHY" in analysis_text.upper(): 
+            status_label = "HEALTHY"
+        elif "DISEASE" in analysis_text.upper() or "SICK" in analysis_text.upper(): 
+            status_label = "DISEASE DETECTED"
 
         # 4. Save to Database
         conn = sqlite3.connect(DB_PATH)
@@ -114,17 +134,25 @@ def predict():
                                history=history)
     
     except Exception as e:
-        print(f"Deployment Error: {e}")
-        return f"System Error: {e}", 500
+        print(f"Prediction Error: {e}")
+        return f"AI Analysis Failed. Error: {e}", 500
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         u = request.form.get('username', '').lower().strip()
         p = request.form.get('password', '').strip()
+        
+        # Admin check
         if u == ADMIN_USER and p == ADMIN_PASS:
+            session.permanent = True
             session['logged_in'] = True
+            session['username'] = ADMIN_USER
+            init_db() # Create DB file on login success
             return redirect(url_for('index'))
+            
+        return render_template('login.html', error="Invalid Credentials")
+    
     return render_template('login.html')
 
 @app.route('/logout')
