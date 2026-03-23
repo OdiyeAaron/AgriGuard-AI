@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>System Control | Agri-Guard</title>
+    <style>
+        body { font-family: sans-serif; background: #f4f7f6; padding: 40px; }
+        .dashboard-grid { display: grid; grid-template-columns: 1fr 2fr; gap: 20px; }
+        .card { background: white; padding: 20px; border-radius: 15px; shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        h2 { color: #1a472a; border-bottom: 2px solid #28a745; padding-bottom: 10px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid #eee; }
+        th { background: #f8f9fa; }
+        .status-pill { padding: 4px 8px; border-radius: 20px; font-size: 11px; font-weight: bold; text-transform: uppercase; }
+    </style>
+</head>
+<body>
+    <h1>🛡️ Agri-Guard Management Console</h1>
+    <a href="/dashboard" style="text-decoration: none; color: #28a745;">← Back to App</a>
+
+    <div class="dashboard-grid">
+        <div class="card">
+            <h2>👥 Registered Users</h2>
+            <table>
+                <tr><th>ID</th><th>Username</th></tr>
+                {% for user in users %}
+                <tr>
+                    <td>{{ user.id }}</td>
+                    <td><strong>{{ user.username }}</strong></td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
+
+        <div class="card">
+            <h2>📜 Global Scan History</h2>
+            <table>
+                <tr>
+                    <th>Time</th>
+                    <th>Result</th>
+                    <th>Detail</th>
+                </tr>
+                {% for scan in scans %}
+                <tr>
+                    <td>{{ scan.timestamp }}</td>
+                    <td><span class="status-pill" style="background: #e9f7ef; color: #28a745;">{{ scan.result }}</span></td>
+                    <td>{{ scan.advice }}</td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
+    </div>
+</body>
+</html>
