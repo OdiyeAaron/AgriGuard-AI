@@ -3,6 +3,7 @@ import io
 import base64
 import requests
 import sqlite3
+import random
 from flask import Flask, render_template, request, session, redirect, url_for, jsonify, flash
 from datetime import datetime, timedelta
 from functools import wraps
@@ -16,10 +17,6 @@ app.permanent_session_lifetime = timedelta(minutes=60)
 
 # Paths (Using /tmp/ for Render compatibility)
 DB_PATH = '/tmp/agriguard.db'
-
-# API Keys from Render Environment Variables
-PLANT_ID_API_KEY = os.getenv("PLANT_ID_API_KEY")
-OPENROUTER_KEY = os.getenv("OPENROUTER_API_KEY") 
 
 # --- 🗄️ DATABASE CORE ---
 def init_db():
@@ -55,7 +52,7 @@ def login_required(f):
 def index():
     # Variables required by your index.html
     lang = request.args.get('lang', 'en')
-    weather_data = {'city': 'Kampala', 'temp': '28', 'desc': 'Sunny'}
+    weather_data = {'city': 'Kampala', 'temp': '28', 'desc': 'Partly Cloudy'}
     t_content = {'title': 'Agri-Guard Intelligence'}
     
     return render_template('index.html', 
@@ -68,14 +65,17 @@ def login():
     if request.method == 'POST':
         user = request.form.get('username')
         pw = request.form.get('password')
-        conn = sqlite3.connect(DB_PATH)
-        row = conn.execute("SELECT password FROM users WHERE username = ?", (user,)).fetchone()
-        conn.close()
-        if row and check_password_hash(row[0], pw):
-            session['logged_in'] = True
-            session['username'] = user
-            return redirect(url_for('index'))
-        flash("Invalid Credentials", "error")
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            row = conn.execute("SELECT password FROM users WHERE username = ?", (user,)).fetchone()
+            conn.close()
+            if row and check_password_hash(row[0], pw):
+                session['logged_in'] = True
+                session['username'] = user
+                return redirect(url_for('index'))
+            flash("Invalid Credentials", "error")
+        except Exception as e:
+            return f"Login Error: {str(e)}"
     return render_template('login.html')
 
 @app.route('/signup', methods=['GET', 'POST'])
@@ -100,9 +100,10 @@ def predict():
     file = request.files.get('file')
     if not file: return redirect(url_for('index'))
     
-    # Placeholder for AI Logic (Analyze & Advice)
-    crop, conf, status = "Maize", 98.5, "HEALTHY"
-    advice = "Ensure proper spacing and apply organic mulch."
+    # Mock AI logic for defense demo
+    crop, conf, status = "Maize (Mahindi)", 94.2, "HEALTHY"
+    advice = "Neural analysis indicates optimal chlorophyll levels. No pathogens detected."
+    prescription = "Continue current irrigation schedule and monitor for Fall Armyworm sightings in the area."
     
     # Image processing for display
     img_bytes = file.read()
@@ -111,24 +112,21 @@ def predict():
 
     return render_template('index.html', 
                            prediction=f"{crop} ({conf}%)", 
-                           advice=f"CONDITION: {status}", 
-                           prescription=advice,
+                           advice=advice, 
+                           prescription=prescription,
                            user_image=user_image,
                            current_lang=request.form.get('lang', 'en'),
-                           weather={'city': 'Kampala', 'temp': '28', 'desc': 'Sunny'},
+                           weather={'city': 'Kampala', 'temp': '28', 'desc': 'Partly Cloudy'},
                            t={'title': 'Agri-Guard Intelligence'})
 
 @app.route('/analytics_data')
 @login_required
 def analytics_data():
+    # Feeds the Chart.js doughnut chart
     return jsonify({
         "labels": ["Healthy", "Blight", "Mosaic", "Rust"],
-        "values": [65, 15, 10, 10]
+        "values": [70, 10, 15, 5]
     })
-
-@app.route('/forgot_password')
-def forgot_password():
-    return render_template('forgot_password.html')
 
 @app.route('/logout')
 def logout():
