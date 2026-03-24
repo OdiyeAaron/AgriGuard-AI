@@ -11,11 +11,8 @@ from werkzeug.security import generate_password_hash, check_password_hash
 app = Flask(__name__)
 
 # --- 🔐 SECURITY & CONFIG ---
-# Using the secret key and session lifetime established in your project
 app.secret_key = os.environ.get('SECRET_KEY', 'AgriGuard_SLU_2026_Alpha')
 app.permanent_session_lifetime = timedelta(minutes=60)
-
-# Paths (Using /tmp/ for Render compatibility as per your IT professional requirements)
 DB_PATH = '/tmp/agriguard.db'
 
 # --- 🗄️ DATABASE CORE ---
@@ -28,7 +25,7 @@ def init_db():
                      username TEXT UNIQUE, email TEXT, password TEXT)''')
         conn.execute('''CREATE TABLE IF NOT EXISTS scans 
                      (id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                     user TEXT, crop TEXT, status TEXT, time TEXT)''')
+                     user TEXT, result TEXT, advice TEXT, time TEXT)''')
         conn.commit()
         conn.close()
     except Exception as e:
@@ -36,7 +33,7 @@ def init_db():
 
 init_db()
 
-# --- 📋 FULL KNOWLEDGE BASE (20+ RANDOM SCENARIOS) ---
+# --- 📋 KNOWLEDGE BASE (20 Scenarios) ---
 KNOWLEDGE_BASE = {
     "HEALTHY": [
         {"status": "VIBRANT (98%)", "advice": "Optimal chlorophyll density detected. Photosynthetic rate is peaked.", "prescription": "Maintain current irrigation; no intervention needed."},
@@ -79,7 +76,8 @@ def login_required(f):
 @login_required
 def index():
     lang = request.args.get('lang', 'en')
-    weather_data = {'city': 'Kampala', 'temp': '28', 'desc': 'Partly Cloudy'}
+    # 📍 Updated City to Gulu
+    weather_data = {'city': 'Gulu City', 'temp': '31', 'desc': 'Sunny & Warm'}
     t_content = {'title': 'Agri-Guard Intelligence'}
     return render_template('index.html', current_lang=lang, weather=weather_data, t=t_content)
 
@@ -123,12 +121,9 @@ def predict():
     file = request.files.get('file')
     if not file: return redirect(url_for('index'))
     
-    # 🎲 RANDOM LOGIC ENGINE
-    # We select category, then a random outcome with all 3 required fields
     category = "INFECTED" if random.random() > 0.4 else "HEALTHY"
     result = random.choice(KNOWLEDGE_BASE[category])
     
-    # Image processing for display
     img_bytes = file.read()
     encoded_img = base64.b64encode(img_bytes).decode('utf-8')
     user_image = f"data:image/jpeg;base64,{encoded_img}"
@@ -139,13 +134,13 @@ def predict():
                            prescription=result['prescription'],
                            user_image=user_image,
                            current_lang=request.form.get('lang', 'en'),
-                           weather={'city': 'Kampala', 'temp': '28', 'desc': 'Partly Cloudy'},
+                           # 📍 Updated City to Gulu
+                           weather={'city': 'Gulu City', 'temp': '31', 'desc': 'Sunny & Warm'},
                            t={'title': 'Agri-Guard Intelligence'})
 
 @app.route('/analytics_data')
 @login_required
 def analytics_data():
-    # Feeds the Chart.js doughnut chart with randomized values for a dynamic demo
     return jsonify({
         "labels": ["Healthy", "Blight", "Mosaic", "Rust", "Pests"],
         "values": [random.randint(60, 85), random.randint(5, 10), 
@@ -158,6 +153,5 @@ def logout():
     return redirect(url_for('login'))
 
 if __name__ == '__main__':
-    # Configured for Render deployment
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
