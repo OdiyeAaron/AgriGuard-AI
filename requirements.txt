@@ -2,3 +2,4 @@ Flask
 replicate
 Pillow
 requests
+gunicorn
