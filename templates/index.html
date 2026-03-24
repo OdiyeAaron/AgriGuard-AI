@@ -15,186 +15,31 @@
             --glass: rgba(255, 255, 255, 0.9);
         }
 
-        /* --- 🎞️ KEYFRAME ANIMATIONS --- */
-        @keyframes slideUp {
-            from { opacity: 0; transform: translateY(30px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes scanLine { 0% { top: 0%; } 50% { top: 100%; } 100% { top: 0%; } }
+        @keyframes pulseGreen { 0% { box-shadow: 0 0 0 0 rgba(40, 167, 69, 0.4); } 70% { box-shadow: 0 0 0 15px rgba(40, 167, 69, 0); } 100% { box-shadow: 0 0 0 0 rgba(40, 167, 69, 0); } }
 
-        @keyframes scanLine {
-            0% { top: 0%; }
-            50% { top: 100%; }
-            100% { top: 0%; }
-        }
+        body { font-family: 'Inter', sans-serif; background: linear-gradient(135deg, #e2e8f0 0%, #f8fafc 100%); margin: 0; padding: 20px; display: flex; justify-content: center; }
+        .container { max-width: 450px; width: 100%; background: var(--glass); backdrop-filter: blur(10px); padding: 30px; border-radius: 35px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.15); animation: slideUp 0.6s ease-out; position: relative; overflow: hidden; }
 
-        @keyframes pulseGreen {
-            0% { box-shadow: 0 0 0 0 rgba(40, 167, 69, 0.4); }
-            70% { box-shadow: 0 0 0 15px rgba(40, 167, 69, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(40, 167, 69, 0); }
-        }
+        #loadingOverlay { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255, 255, 255, 0.98); z-index: 1000; flex-direction: column; justify-content: center; align-items: center; text-align: center; }
+        .scanner-visual { width: 120px; height: 120px; border: 4px solid #e2e8f0; border-radius: 20px; position: relative; overflow: hidden; margin-bottom: 20px; }
+        .scanner-line { position: absolute; width: 100%; height: 4px; background: var(--primary-green); box-shadow: 0 0 15px var(--primary-green); animation: scanLine 2s linear infinite; }
 
-        body {
-            font-family: 'Inter', system-ui, -apple-system, sans-serif;
-            background: linear-gradient(135deg, #e2e8f0 0%, #f8fafc 100%);
-            margin: 0;
-            padding: 20px;
-            display: flex;
-            justify-content: center;
-        }
-
-        .container {
-            max-width: 450px;
-            width: 100%;
-            background: var(--glass);
-            backdrop-filter: blur(10px);
-            padding: 30px;
-            border-radius: 35px;
-            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.15);
-            animation: slideUp 0.6s ease-out;
-            position: relative;
-            overflow: hidden;
-        }
-
-        /* --- 🌀 AI LOADING SCANNER --- */
-        #loadingOverlay {
-            display: none;
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(255, 255, 255, 0.98);
-            z-index: 1000;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            text-align: center;
-        }
-
-        .scanner-visual {
-            width: 120px;
-            height: 120px;
-            border: 4px solid #e2e8f0;
-            border-radius: 20px;
-            position: relative;
-            overflow: hidden;
-            margin-bottom: 20px;
-        }
-
-        .scanner-line {
-            position: absolute;
-            width: 100%;
-            height: 4px;
-            background: var(--primary-green);
-            box-shadow: 0 0 15px var(--primary-green);
-            animation: scanLine 2s linear infinite;
-        }
-
-        /* --- UI COMPONENTS --- */
-        .security-bar {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 20px;
-        }
-
-        .status-dot {
-            background: #dcfce7;
-            color: #166534;
-            padding: 5px 12px;
-            border-radius: 20px;
-            font-size: 11px;
-            font-weight: 800;
-            letter-spacing: 0.5px;
-        }
-
-        .lang-bar {
-            margin-bottom: 15px;
-        }
-
-        .lang-bar a {
-            text-decoration: none;
-            font-size: 12px;
-            color: #64748b;
-            padding: 6px 12px;
-            border-radius: 10px;
-            transition: 0.3s;
-        }
-
+        .security-bar { display: flex; justify-content: space-between; margin-bottom: 20px; }
+        .status-dot { background: #dcfce7; color: #166534; padding: 5px 12px; border-radius: 20px; font-size: 11px; font-weight: 800; }
+        .lang-bar { margin-bottom: 15px; }
+        .lang-bar a { text-decoration: none; font-size: 12px; color: #64748b; padding: 6px 12px; border-radius: 10px; transition: 0.3s; }
         .active-lang { background: white; color: var(--primary-green) !important; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
 
-        .weather-badge {
-            background: white;
-            border: 1px solid #e2e8f0;
-            padding: 15px;
-            border-radius: 20px;
-            margin-bottom: 25px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 13px;
-        }
-
-        /* --- 📸 INTERACTIVE UPLOAD --- */
-        .upload-area {
-            border: 2px dashed #cbd5e1;
-            padding: 40px 20px;
-            border-radius: 25px;
-            background: white;
-            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            text-align: center;
-            position: relative;
-            cursor: pointer;
-        }
-
-        .upload-area:hover { border-color: var(--primary-green); transform: scale(1.02); }
-
-        #scanBtn {
-            display: none;
-            width: 100%;
-            background: var(--primary-green);
-            color: white;
-            border: none;
-            padding: 20px;
-            border-radius: 20px;
-            margin-top: 20px;
-            font-weight: 800;
-            letter-spacing: 1px;
-            cursor: pointer;
-            animation: pulseGreen 2s infinite;
-        }
-
-        .result-card {
-            margin-top: 25px;
-            padding: 25px;
-            background: white;
-            border-radius: 25px;
-            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05);
-            border-top: 5px solid var(--primary-green);
-            animation: slideUp 0.5s ease-out;
-        }
-
-        .prescription-box {
-            background: #fffbeb;
-            border-left: 4px solid #f59e0b;
-            padding: 15px;
-            border-radius: 12px;
-            font-size: 14px;
-            margin-top: 15px;
-        }
-
-        /* --- 👨‍💻 PROJECT FOOTER --- */
-        .dev-card {
-            margin-top: 40px;
-            padding: 20px;
-            background: var(--slu-blue);
-            color: white;
-            border-radius: 25px;
-            text-align: center;
-        }
-
-        .dev-card h4 { margin: 0; font-size: 14px; opacity: 0.8; }
-        .dev-card p { margin: 5px 0 0; font-weight: 700; font-size: 16px; color: #10b981; }
-
+        .weather-badge { background: white; border: 1px solid #e2e8f0; padding: 15px; border-radius: 20px; margin-bottom: 25px; display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
+        .upload-area { border: 2px dashed #cbd5e1; padding: 40px 20px; border-radius: 25px; background: white; text-align: center; cursor: pointer; }
+        #scanBtn { display: none; width: 100%; background: var(--primary-green); color: white; border: none; padding: 20px; border-radius: 20px; margin-top: 20px; font-weight: 800; animation: pulseGreen 2s infinite; cursor: pointer; }
+        .result-card { margin-top: 25px; padding: 25px; background: white; border-radius: 25px; border-top: 5px solid var(--primary-green); animation: slideUp 0.5s ease-out; }
+        .prescription-box { background: #fffbeb; border-left: 4px solid #f59e0b; padding: 15px; border-radius: 12px; font-size: 14px; margin-top: 15px; }
+        .dev-card { margin-top: 40px; padding: 20px; background: var(--slu-blue); color: white; border-radius: 25px; text-align: center; }
     </style>
 </head>
-
 <body>
 <div class="container">
     <div id="loadingOverlay">
@@ -202,8 +47,8 @@
             <div class="scanner-line"></div>
             <span style="font-size: 50px; line-height: 120px;">🔬</span>
         </div>
-        <h3 style="color: var(--slu-blue); margin: 0;">Neural Engine Active</h3>
-        <p style="color: #64748b; font-size: 14px;">Decoding Biological Patterns...</p>
+        <h3>Neural Engine Active</h3>
+        <p>Decoding Biological Patterns...</p>
     </div>
 
     <div class="security-bar">
@@ -217,7 +62,7 @@
         <a href="?lang=lg" class="{% if current_lang == 'lg' %}active-lang{% endif %}">LG</a>
     </div>
 
-    <h1 style="font-size: 32px; letter-spacing: -1px; margin-bottom: 10px;">{{ t.title }}</h1>
+    <h1>{{ t.title }}</h1>
 
     <div class="weather-badge">
         <span>📍 <b>{{ weather.city }}</b></span>
@@ -227,35 +72,32 @@
 
     <form id="uploadForm" action="{{ url_for('predict') }}" method="post" enctype="multipart/form-data">
         <input type="hidden" name="lang" value="{{ current_lang }}">
-        
-        <div class="upload-area" id="dropZone" onclick="document.getElementById('fileInput').click();">
-            <div id="uploadContent">
-                <div style="background: #f0fdf4; width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 15px;">
-                    <span style="font-size: 30px;">🌱</span>
+        <div class="upload-area" onclick="document.getElementById('fileInput').click();">
+            {% if user_image %}
+                <img src="{{ user_image }}" style="width: 100%; border-radius: 15px; object-fit: cover; max-height: 250px;">
+            {% else %}
+                <div id="uploadContent">
+                    <div style="background: #f0fdf4; width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 15px;">
+                        <span style="font-size: 30px;">🌱</span>
+                    </div>
+                    <p><strong>Capture Crop Sample</strong><br><span style="font-size: 12px; color: #64748b;">AI-Ready Diagnostic</span></p>
                 </div>
-                <p><strong>Capture Crop Sample</strong><br><span style="font-size: 12px; color: #64748b;">AI-Ready Diagnostic</span></p>
-            </div>
-            <img id="imagePreview" style="width: 100%; border-radius: 15px; display: none; object-fit: cover; max-height: 250px;">
-            <input type="file" id="fileInput" name="file" accept="image/*" capture="environment" style="display:none;">
+            {% endif %}
+            <input type="file" id="fileInput" name="file" accept="image/*" style="display:none;" onchange="showButton()">
         </div>
-
         <button type="button" id="scanBtn" onclick="startAnalysis()">🚀 INITIATE BIOMETRIC SCAN</button>
     </form>
 
     {% if prediction %}
     <div class="result-card">
-        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+        <div style="display: flex; justify-content: space-between;">
             <h2 style="color: var(--primary-green); margin: 0; font-size: 20px;">{{ prediction }}</h2>
-            <span style="font-size: 10px; background: #f1f5f9; padding: 4px 8px; border-radius: 5px;">RESULT ID: #{{ range(1000, 9999)|random }}</span>
         </div>
         <p style="color: #475569; line-height: 1.6; margin-top: 10px;">{{ advice }}</p>
-        
-        {% if prescription %}
         <div class="prescription-box">
             <strong style="color: #b45309;">📋 AI PRESCRIPTION</strong>
-            <p style="margin: 8px 0 0; line-height: 1.4;">{{ prescription }}</p>
+            <p style="margin: 8px 0 0;">{{ prescription }}</p>
         </div>
-        {% endif %}
     </div>
     {% endif %}
 
@@ -271,58 +113,26 @@
 </div>
 
 <script>
-    const fileInput = document.getElementById('fileInput');
-    const scanBtn = document.getElementById('scanBtn');
-    const imagePreview = document.getElementById('imagePreview');
-    const uploadContent = document.getElementById('uploadContent');
-
-    fileInput.onchange = function() {
-        if (this.files && this.files[0]) {
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                imagePreview.src = e.target.result;
-                imagePreview.style.display = "block";
-                uploadContent.style.display = "none";
-                scanBtn.style.display = "block"; 
-            }
-            reader.readAsDataURL(this.files[0]);
-        }
-    };
+    function showButton() { document.getElementById('scanBtn').style.display = "block"; }
 
     function startAnalysis() {
         document.getElementById("loadingOverlay").style.display = "flex";
-        // Brief delay to simulate neural network processing before form submission
         setTimeout(() => { document.getElementById('uploadForm').submit(); }, 1800);
     }
 
-    // Chart.js initialization
     fetch('/analytics_data').then(res => res.json()).then(data => {
-        if(data.labels && data.labels.length > 0) {
-            new Chart(document.getElementById('statsChart'), {
-                type: 'doughnut',
-                data: {
-                    labels: data.labels,
-                    datasets: [{
-                        data: data.values,
-                        backgroundColor: ['#10b981', '#f43f5e', '#78350f', '#f59e0b', '#64748b'],
-                        hoverOffset: 10,
-                        borderWidth: 0
-                    }]
-                },
-                options: { 
-                    cutout: '70%', 
-                    plugins: { 
-                        legend: { 
-                            position: 'bottom',
-                            labels: {
-                                boxWidth: 12,
-                                font: { size: 11 }
-                            }
-                        } 
-                    } 
-                }
-            });
-        }
+        new Chart(document.getElementById('statsChart'), {
+            type: 'doughnut',
+            data: {
+                labels: data.labels,
+                datasets: [{
+                    data: data.values,
+                    backgroundColor: ['#10b981', '#f43f5e', '#78350f', '#f59e0b'],
+                    borderWidth: 0
+                }]
+            },
+            options: { cutout: '70%', plugins: { legend: { position: 'bottom' } } }
+        });
     });
 </script>
 </body>
