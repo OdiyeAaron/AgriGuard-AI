@@ -17,9 +17,9 @@ app.permanent_session_lifetime = timedelta(minutes=60)
 # Paths (Using /tmp/ for Render compatibility)
 DB_PATH = '/tmp/agriguard.db'
 
-# API Keys (Ensure these are set in Render -> Environment)
+# API Keys - UPDATED TO MATCH YOUR RENDER SCREENSHOT
 PLANT_ID_API_KEY = os.getenv("PLANT_ID_API_KEY")
-OPENROUTER_KEY = os.getenv("OPENROUTER_API_KEY")
+OPENROUTER_KEY = os.getenv("OPENROUTER_API_KEY") 
 
 # --- 🗄️ DATABASE CORE ---
 def init_db():
@@ -50,7 +50,6 @@ def login_required(f):
 # --- 🛠️ AI UTILITIES ---
 
 def analyze_plant(image_bytes):
-    # 🌍 Local Ugandan Mapping (Case-Insensitive)
     LOCAL_NAMES = {
         "zea mays": "Maize (Mahindi)",
         "arachis hypogaea": "Groundnuts (Ebinyebwa)",
@@ -76,11 +75,9 @@ def analyze_plant(image_bytes):
         data = res.json()
         sug = data['suggestions'][0]
         
-        # 🧪 Clean Scientific Name
         raw_sci = sug.get('plant_name', '').strip().lower()
         api_common = sug.get('plant_details', {}).get('common_names', [None])[0]
         
-        # 🧪 Mapping Logic
         if raw_sci in LOCAL_NAMES:
             crop_name = LOCAL_NAMES[raw_sci]
         elif api_common:
@@ -88,7 +85,6 @@ def analyze_plant(image_bytes):
         else:
             crop_name = sug['plant_name'].title()
 
-        # 🧪 Health Assessment
         health_data = data.get('health_assessment', {})
         is_healthy = health_data.get('is_healthy', True)
         
@@ -103,7 +99,6 @@ def analyze_plant(image_bytes):
 def get_llama_advice(crop, status):
     if not OPENROUTER_KEY: return "Apply mulch and check soil moisture."
 
-    # 🧠 SMART BRAIN UPGRADE: Healthy vs Infected
     if status == "HEALTHY":
         prompt_goal = "Give 3 organic tips to KEEP this plant healthy and MAXIMIZE harvest yield."
         focus = "Focus on mulching, manure, and weeding."
@@ -148,7 +143,6 @@ def predict():
     crop, conf, status = analyze_plant(img_bytes)
     advice = get_llama_advice(crop, status)
     
-    # DB Log for presentation
     try:
         conn = sqlite3.connect(DB_PATH)
         conn.execute("INSERT INTO scans (user, crop, status, time) VALUES (?, ?, ?, ?)", 
@@ -203,5 +197,6 @@ def logout():
 if __name__ == '__main__':
     with app.app_context():
         init_db()
-    port = int(os.environ.get("PORT", 5000))
+    # 🏁 RENDER PORT FIX
+    port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
