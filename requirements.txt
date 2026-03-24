@@ -1,5 +1,5 @@
 Flask
-replicate
-Pillow
 requests
-gunicorn
+Pillow
+tensorflow-cpu
+numpy
