@@ -17,13 +17,15 @@ app.permanent_session_lifetime = timedelta(minutes=60)
 # Paths (Using /tmp/ for Render compatibility)
 DB_PATH = '/tmp/agriguard.db'
 
-# API Keys - UPDATED TO MATCH YOUR RENDER SCREENSHOT
+# API Keys
 PLANT_ID_API_KEY = os.getenv("PLANT_ID_API_KEY")
 OPENROUTER_KEY = os.getenv("OPENROUTER_API_KEY") 
 
 # --- 🗄️ DATABASE CORE ---
 def init_db():
     try:
+        # Ensure directory exists for /tmp/ storage
+        os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
         conn = sqlite3.connect(DB_PATH)
         conn.execute('''CREATE TABLE IF NOT EXISTS users 
                      (id INTEGER PRIMARY KEY AUTOINCREMENT, 
@@ -38,6 +40,9 @@ def init_db():
     except Exception as e:
         print(f"Database Error: {e}")
 
+# Initialize DB immediately
+init_db()
+
 # --- 🔐 LOGIN PROTECTION ---
 def login_required(f):
     @wraps(f)
@@ -48,7 +53,6 @@ def login_required(f):
     return decorated_function
 
 # --- 🛠️ AI UTILITIES ---
-
 def analyze_plant(image_bytes):
     LOCAL_NAMES = {
         "zea mays": "Maize (Mahindi)",
@@ -57,7 +61,6 @@ def analyze_plant(image_bytes):
         "manihot esculenta": "Cassava (Muwogo)",
         "sorghum bicolor": "Sorghum"
     }
-
     if not PLANT_ID_API_KEY: return "Maize Sample", 95, "HEALTHY"
     
     encoded = base64.b64encode(image_bytes).decode('ascii')
@@ -66,7 +69,6 @@ def analyze_plant(image_bytes):
         "latitude": 0.3476, "longitude": 32.5825,
         "modifiers": ["crops_fast", "disease_all", "crop_health"]
     }
-    
     try:
         res = requests.post("https://api.plant.id/v2/identify", 
                              json=payload, 
@@ -74,7 +76,6 @@ def analyze_plant(image_bytes):
                              timeout=15)
         data = res.json()
         sug = data['suggestions'][0]
-        
         raw_sci = sug.get('plant_name', '').strip().lower()
         api_common = sug.get('plant_details', {}).get('common_names', [None])[0]
         
@@ -86,10 +87,8 @@ def analyze_plant(image_bytes):
             crop_name = sug['plant_name'].title()
 
         health_data = data.get('health_assessment', {})
-        is_healthy = health_data.get('is_healthy', True)
-        
         status = "HEALTHY"
-        if not is_healthy and health_data.get('diseases'):
+        if not health_data.get('is_healthy', True) and health_data.get('diseases'):
             status = health_data['diseases'][0]['name'].upper()
         
         return crop_name, round(sug['probability']*100, 1), status
@@ -98,33 +97,18 @@ def analyze_plant(image_bytes):
 
 def get_llama_advice(crop, status):
     if not OPENROUTER_KEY: return "Apply mulch and check soil moisture."
-
-    if status == "HEALTHY":
-        prompt_goal = "Give 3 organic tips to KEEP this plant healthy and MAXIMIZE harvest yield."
-        focus = "Focus on mulching, manure, and weeding."
-    else:
-        prompt_goal = f"This plant has {status}. Give 3 emergency organic remedies to CURE it."
-        focus = "Focus on natural sprays (Neem/Chili), removing infected parts, and wood ash."
-
-    prompt = (
-        f"You are a Senior Ugandan Agricultural Officer. A farmer scanned a {crop}. "
-        f"Status: {status}. {prompt_goal} {focus} "
-        f"Keep it practical for a Ugandan village, under 70 words, in 3 bullet points."
-    )
+    prompt_goal = "Give 3 organic tips to KEEP this plant healthy." if status == "HEALTHY" else f"This plant has {status}. Give 3 organic remedies."
+    prompt = f"You are a Ugandan Agricultural Officer. A farmer scanned a {crop}. Status: {status}. {prompt_goal} Practical for a village, under 70 words, 3 bullets."
     
     try:
         res = requests.post("https://openrouter.ai/api/v1/chat/completions", 
             headers={"Authorization": f"Bearer {OPENROUTER_KEY}"},
-            json={
-                "model": "meta-llama/llama-3.1-8b-instruct:free", 
-                "messages": [{"role": "user", "content": prompt}]
-            })
+            json={"model": "meta-llama/llama-3.1-8b-instruct:free", "messages": [{"role": "user", "content": prompt}]})
         return res.json()['choices'][0]['message']['content']
     except:
         return "Apply wood ash and consult your sub-county extension officer."
 
 # --- 🚀 ROUTES ---
-
 @app.route('/')
 @login_required
 def index():
@@ -135,11 +119,9 @@ def index():
 def predict():
     file = request.files.get('file')
     if not file: return redirect(url_for('index'))
-    
     img_bytes = file.read()
     encoded_img = base64.b64encode(img_bytes).decode('utf-8')
     user_image = f"data:image/jpeg;base64,{encoded_img}"
-    
     crop, conf, status = analyze_plant(img_bytes)
     advice = get_llama_advice(crop, status)
     
@@ -151,13 +133,8 @@ def predict():
         conn.close()
     except:
         pass
-
-    return render_template('index.html', 
-                           user_image=user_image,
-                           prediction=f"{crop} ({conf}%)", 
-                           advice=f"CONDITION: {status}", 
-                           prescription=advice,
-                           t={'title': 'Agri-Guard Intelligence'})
+    return render_template('index.html', user_image=user_image, prediction=f"{crop} ({conf}%)", 
+                           advice=f"CONDITION: {status}", prescription=advice, t={'title': 'Agri-Guard Intelligence'})
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -189,14 +166,20 @@ def signup():
         flash("Username taken.", "error")
     return redirect(url_for('login'))
 
+# --- 🔑 MISSING ROUTE FIXED ---
+@app.route('/forgot_password', methods=['GET', 'POST'])
+def forgot_password():
+    if request.method == 'POST':
+        email = request.form.get('email')
+        flash(f"Reset link sent to {email} (Simulation)", "success")
+        return redirect(url_for('login'))
+    return redirect(url_for('login'))
+
 @app.route('/logout')
 def logout():
     session.clear()
     return redirect(url_for('login'))
 
 if __name__ == '__main__':
-    with app.app_context():
-        init_db()
-    # 🏁 RENDER PORT FIX
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
