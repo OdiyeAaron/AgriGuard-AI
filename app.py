@@ -13,6 +13,7 @@ app = Flask(__name__)
 # --- 🔐 SECURITY & CONFIG ---
 app.secret_key = os.environ.get('SECRET_KEY', 'AgriGuard_SLU_2026_Alpha')
 app.permanent_session_lifetime = timedelta(minutes=60)
+# /tmp/ is required for Render deployment to allow database writing
 DB_PATH = '/tmp/agriguard.db'
 
 # --- 🗄️ DATABASE CORE ---
@@ -20,6 +21,7 @@ def init_db():
     try:
         os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
         conn = sqlite3.connect(DB_PATH)
+        # Cleaned SQL to ensure no hidden character crashes
         conn.execute('''CREATE TABLE IF NOT EXISTS users 
                      (id INTEGER PRIMARY KEY AUTOINCREMENT, 
                      username TEXT UNIQUE, email TEXT, password TEXT)''')
@@ -76,7 +78,7 @@ def login_required(f):
 @login_required
 def index():
     lang = request.args.get('lang', 'en')
-    # 📍 Updated City to Gulu
+    # Localization: Gulu City
     weather_data = {'city': 'Gulu City', 'temp': '31', 'desc': 'Sunny & Warm'}
     t_content = {'title': 'Agri-Guard Intelligence'}
     return render_template('index.html', current_lang=lang, weather=weather_data, t=t_content)
@@ -88,9 +90,11 @@ def login():
         pw = request.form.get('password')
         try:
             conn = sqlite3.connect(DB_PATH)
+            # Row factory allows accessing columns by name like row['password']
+            conn.row_factory = sqlite3.Row
             row = conn.execute("SELECT password FROM users WHERE username = ?", (user,)).fetchone()
             conn.close()
-            if row and check_password_hash(row[0], pw):
+            if row and check_password_hash(row['password'], pw):
                 session['logged_in'] = True
                 session['username'] = user
                 return redirect(url_for('index'))
@@ -118,25 +122,32 @@ def signup():
 @app.route('/predict', methods=['POST'])
 @login_required
 def predict():
-    file = request.files.get('file')
-    if not file: return redirect(url_for('index'))
-    
-    category = "INFECTED" if random.random() > 0.4 else "HEALTHY"
-    result = random.choice(KNOWLEDGE_BASE[category])
-    
-    img_bytes = file.read()
-    encoded_img = base64.b64encode(img_bytes).decode('utf-8')
-    user_image = f"data:image/jpeg;base64,{encoded_img}"
+    try:
+        file = request.files.get('file')
+        if not file: return redirect(url_for('index'))
+        
+        # Determine result randomly for demo purposes
+        category = "INFECTED" if random.random() > 0.4 else "HEALTHY"
+        result = random.choice(KNOWLEDGE_BASE[category])
+        
+        img_bytes = file.read()
+        encoded_img = base64.b64encode(img_bytes).decode('utf-8')
+        user_image = f"data:image/jpeg;base64,{encoded_img}"
 
-    return render_template('index.html', 
-                           prediction=result['status'], 
-                           advice=result['advice'], 
-                           prescription=result['prescription'],
-                           user_image=user_image,
-                           current_lang=request.form.get('lang', 'en'),
-                           # 📍 Updated City to Gulu
-                           weather={'city': 'Gulu City', 'temp': '31', 'desc': 'Sunny & Warm'},
-                           t={'title': 'Agri-Guard Intelligence'})
+        # Must re-pass weather and t_content so the UI stays consistent after POST
+        weather_data = {'city': 'Gulu City', 'temp': '31', 'desc': 'Sunny & Warm'}
+        t_content = {'title': 'Agri-Guard Intelligence'}
+
+        return render_template('index.html', 
+                               prediction=result['status'], 
+                               advice=result['advice'], 
+                               prescription=result['prescription'],
+                               user_image=user_image,
+                               current_lang=request.form.get('lang', 'en'),
+                               weather=weather_data,
+                               t=t_content)
+    except Exception as e:
+        return f"Prediction System Error: {str(e)}"
 
 @app.route('/analytics_data')
 @login_required
