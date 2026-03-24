@@ -1,5 +1,5 @@
-Flask
+flask
 requests
+gunicorn
 Pillow
-tensorflow-cpu
-numpy
+werkzeug
