@@ -21,15 +21,28 @@ os.makedirs(os.path.join(os.getcwd(), 'static', 'uploads'), exist_ok=True)
 ADMIN_USER = "admin"
 ADMIN_PASS = "StLawrence2026"
 
+# --- 🌍 CROP & SEED MAPPING DICTIONARY ---
+# This ensures Latin names are converted to your specific English names
+CROP_MAPPER = {
+    "zea mays": "Maize (Corn)",
+    "phaseolus vulgaris": "Beans",
+    "terminalia catappa": "Beans (Corrected from Mimic)",
+    "sorghum bicolor": "Sorghum (Millet)",
+    "arachis hypogaea": "Groundnuts",
+    "oryza sativa": "Rice",
+    "coffea arabica": "Coffee",
+    "coffea canephora": "Coffee",
+    "vigna unguiculata": "Beans (Cowpea)"
+}
+
 # --- 🔑 API CONFIG ---
-# Make sure these are set in your Render Environment Variables
 PLANT_ID_API_KEY = os.getenv("PLANT_ID_API_KEY")
 OPENROUTER_KEY = os.getenv("OPENROUTER_API_KEY")
 
 def analyze_with_plant_id(image_bytes):
     """Expert AI Engine for Maize, Beans, Rice, Sorghum, Groundnuts, and Coffee."""
     if not PLANT_ID_API_KEY:
-        return "API Key Missing", 0
+        return "API Key Missing", 0, "UNKNOWN"
     
     encoded_image = base64.b64encode(image_bytes).decode('ascii')
     url = "https://api.plant.id/v2/identify"
@@ -45,22 +58,24 @@ def analyze_with_plant_id(image_bytes):
         response = requests.post(url, json=payload, headers=headers, timeout=20)
         data = response.json()
         
-        # Get the best agricultural match
         suggestion = data['suggestions'][0]
-        plant_name = suggestion['plant_name']
+        scientific_name = suggestion['plant_name'].lower().strip()
         probability = round(suggestion['probability'] * 100, 1)
+        
+        # 🧪 Apply Translation Mapping
+        display_name = CROP_MAPPER.get(scientific_name, suggestion['plant_name'].title())
         
         # Check Health Status
         health = data.get('health_assessment', {})
         is_healthy = health.get('is_healthy', True)
         status = "HEALTHY" if is_healthy else "DISEASE DETECTED"
         
-        return f"{plant_name} ({status})", probability
+        return display_name, probability, status
     except Exception as e:
         print(f"Plant.id Error: {e}")
-        return "Analysis Error", 0
+        return "Analysis Error", 0, "UNKNOWN"
 
-def get_treatment_advice(analysis_result):
+def get_treatment_advice(crop_name, status):
     """Localized advice from OpenRouter."""
     if not OPENROUTER_KEY:
         return "Apply wood ash and ensure proper drainage."
@@ -68,8 +83,9 @@ def get_treatment_advice(analysis_result):
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {"Authorization": f"Bearer {OPENROUTER_KEY}", "Content-Type": "application/json"}
     
-    prompt = (f"The AI detected: '{analysis_result}'. Provide 3 clear, organic treatment steps "
-              "for a farmer in South Sudan using local materials like neem oil or wood ash.")
+    prompt = (f"The AI detected {crop_name} with status: {status}. "
+              "Provide 3 clear, organic treatment or storage steps for a farmer in "
+              "South Sudan using local materials like neem oil or wood ash.")
     
     try:
         res = requests.post(url, headers=headers, json={
@@ -102,7 +118,7 @@ def login_required(f):
 def index():
     context = {
         't': {'title': 'Agri-Guard Pro'},
-        'weather': {'city': 'Kampala', 'temp': '28', 'desc': 'Sunny'}
+        'weather': {'city': 'Juba', 'temp': '32', 'desc': 'Sunny'}
     }
     return render_template('index.html', **context)
 
@@ -115,23 +131,23 @@ def predict():
     try:
         image_bytes = file.read()
         
-        # 🥇 STEP 1: Expert Identification (Plant.id)
-        result_text, confidence = analyze_with_plant_id(image_bytes)
+        # 🥇 STEP 1: Expert Identification with Mapping
+        crop_name, confidence, health_status = analyze_with_plant_id(image_bytes)
         
         # 🥈 STEP 2: Localized Treatment (OpenRouter)
-        treatment = get_treatment_advice(result_text)
+        treatment = get_treatment_advice(crop_name, health_status)
 
         return render_template('index.html', 
-                               prediction=f"{result_text} ({confidence}%)", 
-                               advice="PLANT.ID BIOMETRIC ENGINE COMPLETE",
+                               prediction=f"{crop_name} ({confidence}%)", 
+                               advice=f"HEALTH STATUS: {health_status}",
                                prescription=treatment,
                                t={'title': 'Agri-Guard Pro'},
-                               weather={'city': 'Kampala', 'temp': '28', 'desc': 'Sunny'})
+                               weather={'city': 'Juba', 'temp': '32', 'desc': 'Sunny'})
 
     except Exception as e:
         return render_template('index.html', prediction="ANALYSIS FAILED", 
                                advice="Check your API connection.", prescription=str(e),
-                               t={'title': 'Agri-Guard Pro'}, weather={'city': 'Kampala', 'temp': '28', 'desc': 'Sunny'})
+                               t={'title': 'Agri-Guard Pro'}, weather={'city': 'Juba', 'temp': '32', 'desc': 'Sunny'})
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
