@@ -11,7 +11,7 @@ from PIL import Image
 from werkzeug.security import generate_password_hash, check_password_hash
 
 # --- 🧠 AI ENGINE SETUP ---
-# We load the model only when needed to speed up deployment on Render
+# Optimized for Render: We don't load the heavy model until the app is fully live
 LOCAL_MODEL = None
 LOCAL_AI_READY = False
 
@@ -20,6 +20,7 @@ def load_local_ai():
     if LOCAL_MODEL is None:
         try:
             import tensorflow as tf
+            # Using MobileNetV2 as a lightweight local buffer
             LOCAL_MODEL = tf.keras.applications.MobileNetV2(weights='imagenet')
             LOCAL_AI_READY = True
         except Exception as e:
@@ -27,10 +28,13 @@ def load_local_ai():
             LOCAL_AI_READY = False
 
 app = Flask(__name__)
-app.secret_key = 'st_lawrence_bit_research_2026'
+
+# --- 🔐 SECURITY CONFIG ---
+# Pulls the key you just set in Render. Fallback is for local testing.
+app.secret_key = os.environ.get('SECRET_KEY', 'AgriGuard_SLU_2026_Alpha')
 app.permanent_session_lifetime = timedelta(minutes=60)
 
-# Paths - Using /tmp for Render's ephemeral storage
+# Paths - Using /tmp/ is mandatory for Render's Free Tier
 DB_PATH = '/tmp/agriguard.db'
 UPLOAD_FOLDER = os.path.join('static', 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -41,17 +45,21 @@ OPENROUTER_KEY = os.getenv("OPENROUTER_API_KEY")
 
 # --- 🗄️ DATABASE CORE ---
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute('''CREATE TABLE IF NOT EXISTS users 
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                  username TEXT UNIQUE, 
-                  email TEXT, 
-                  password TEXT)''')
-    conn.execute('''CREATE TABLE IF NOT EXISTS scans 
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                  user TEXT, crop TEXT, status TEXT, time TEXT)''')
-    conn.commit()
-    conn.close()
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute('''CREATE TABLE IF NOT EXISTS users 
+                     (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                      username TEXT UNIQUE, 
+                      email TEXT, 
+                      password TEXT)''')
+        conn.execute('''CREATE TABLE IF NOT EXISTS scans 
+                     (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                      user TEXT, crop TEXT, status TEXT, time TEXT)''')
+        conn.commit()
+        conn.close()
+        print("✅ Database initialized successfully.")
+    except Exception as e:
+        print(f"❌ Database Error: {e}")
 
 # --- 🔐 SECURITY MIDDLEWARE ---
 def login_required(f):
@@ -70,7 +78,7 @@ def analyze_plant(image_bytes):
     encoded = base64.b64encode(image_bytes).decode('ascii')
     payload = {
         "images": [encoded],
-        "latitude": 0.3476, "longitude": 32.5825,
+        "latitude": 0.3476, "longitude": 32.5825, # Kampala Coordinates
         "modifiers": ["crops_fast", "disease_all"]
     }
     headers = {"Api-Key": PLANT_ID_API_KEY}
@@ -165,8 +173,13 @@ def logout():
     session.clear()
     return redirect(url_for('login'))
 
+# --- 🏁 EXECUTION ---
 if __name__ == '__main__':
-    init_db()
-    # CRITICAL: Bind to 0.0.0.0 and use the PORT provided by Render
+    # Initialize DB inside app context to ensure Render reliability
+    with app.app_context():
+        init_db()
+    
+    # Grab the dynamic PORT from Render, default to 5000 for local dev
     port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
+    # host='0.0.0.0' is CRITICAL for public visibility on Render
+    app.run(host='0.0.0.0', port=port, debug=False)
