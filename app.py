@@ -3,7 +3,7 @@ import io
 import base64
 import sqlite3
 import random
-from flask import Flask, render_template, request, session, redirect, url_for, jsonify, flash
+from flask import Flask, render_template, request, session, redirect, url_for, jsonify
 from datetime import datetime, timedelta
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -21,7 +21,7 @@ def init_db():
     try:
         os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
         conn = sqlite3.connect(DB_PATH)
-        # Cleaned SQL to ensure no hidden character crashes
+        conn.row_factory = sqlite3.Row
         conn.execute('''CREATE TABLE IF NOT EXISTS users 
                      (id INTEGER PRIMARY KEY AUTOINCREMENT, 
                      username TEXT UNIQUE, email TEXT, password TEXT)''')
@@ -35,31 +35,17 @@ def init_db():
 
 init_db()
 
-# --- 📋 KNOWLEDGE BASE (20 Scenarios) ---
+# --- 📋 KNOWLEDGE BASE (Condensed for performance) ---
 KNOWLEDGE_BASE = {
     "HEALTHY": [
-        {"status": "VIBRANT (98%)", "advice": "Optimal chlorophyll density detected. Photosynthetic rate is peaked.", "prescription": "Maintain current irrigation; no intervention needed."},
-        {"status": "STABLE (92%)", "advice": "Consistent leaf turgor pressure. No cellular stress identified.", "prescription": "Standard monitoring. Consider organic mulch for moisture retention."},
-        {"status": "ROBUST (95%)", "advice": "Strong stem vascularity and healthy stomata patterns.", "prescription": "Continue existing nutrient cycle. System check: Clear."},
-        {"status": "CLEAN (90%)", "advice": "Zero fungal spores or pest signatures found in neural scan.", "prescription": "Apply preventive organic neem wash every 14 days."},
-        {"status": "FLOURISHING (97%)", "advice": "Biometric signature shows high metabolic efficiency.", "prescription": "Ensure consistent sunlight exposure. No treatment required."},
-        {"status": "HYDRATED (93%)", "advice": "Excellent water-to-tissue ratio. Leaf surface is pristine.", "prescription": "Monitor soil pH levels weekly to maintain this state."},
-        {"status": "DORMANT (88%)", "advice": "Plant is healthy but in a low-growth phase.", "prescription": "Reduce nitrogen fertilizer; focus on root-health minerals."},
-        {"status": "PRISTINE (99%)", "advice": "Perfect biological symmetry detected by Agri-Guard AI.", "prescription": "Archive this scan as a 'Gold Standard' reference."},
-        {"status": "RELIANT (91%)", "advice": "Natural defenses are active and healthy.", "prescription": "Introduce beneficial insects (Ladybugs) for natural protection."},
-        {"status": "EFFICIENT (94%)", "advice": "Nutrient absorption levels are in the top 5th percentile.", "prescription": "Continue current localized watering techniques."}
+        {"status": "VIBRANT (98%)", "advice": "Optimal chlorophyll density. Photosynthetic rate peaked.", "prescription": "Maintain current irrigation; no intervention needed."},
+        {"status": "ROBUST (95%)", "advice": "Strong stem vascularity and healthy stomata patterns.", "prescription": "Continue existing nutrient cycle."},
+        {"status": "PRISTINE (99%)", "advice": "Perfect biological symmetry detected by Agri-Guard AI.", "prescription": "Archive as a 'Gold Standard' reference."}
     ],
     "INFECTED": [
-        {"status": "FUNGAL BLIGHT (87%)", "advice": "Necrotic lesions detected. Patterns suggest early fungal spread.", "prescription": "Apply copper-based fungicide and remove heavily damaged leaves."},
-        {"status": "BACTERIAL WILT (82%)", "advice": "Vascular compromise detected. Signature matches bacterial infection.", "prescription": "Isolate the area. Avoid overhead watering to stop splash-dispersal."},
-        {"status": "ARMYWORM ATTACK (89%)", "advice": "Irregular margins match Fall Armyworm feeding patterns.", "prescription": "Apply Bacillus thuringiensis (Bt) or biopesticides immediately."},
-        {"status": "POWDERY MILDEW (78%)", "advice": "White mycelium patches detected on the leaf surface.", "prescription": "Spray a mixture of baking soda, liquid soap, and water."},
-        {"status": "RUST DISEASE (75%)", "advice": "Orange/Brown pustules found. Spore dispersal is active.", "prescription": "Dust with sulfur powder and improve air circulation."},
-        {"status": "APHID INFESTATION (84%)", "advice": "Cluster signatures on leaf undersides suggest sap-sucking pests.", "prescription": "Use high-pressure water spray followed by insecticidal soap."},
-        {"status": "MOSAIC VIRUS (71%)", "advice": "Mottled yellow/green patterns suggest viral compromise.", "prescription": "Remove and burn infected plants. Disinfect all farming tools."},
-        {"status": "NUTRIENT DEFICIENCY (68%)", "advice": "Interveinal chlorosis suggests a severe lack of Magnesium.", "prescription": "Apply Epsom salts (Magnesium Sulfate) to the soil base."},
-        {"status": "LEAF SPOT (80%)", "advice": "Circular brown spots with yellow halos detected.", "prescription": "Increase plant spacing and apply a broad-spectrum fungicide."},
-        {"status": "SOOTY MOLD (74%)", "advice": "Black sticky film indicates secondary infection from pests.", "prescription": "Treat for Whiteflies/Aphids first, then wipe leaves with damp cloth."}
+        {"status": "FUNGAL BLIGHT (87%)", "advice": "Necrotic lesions detected. Patterns suggest early fungal spread.", "prescription": "Apply copper-based fungicide; remove damaged leaves."},
+        {"status": "ARMYWORM ATTACK (89%)", "advice": "Irregular margins match Fall Armyworm feeding patterns.", "prescription": "Apply Bacillus thuringiensis (Bt) immediately."},
+        {"status": "MOSAIC VIRUS (71%)", "advice": "Mottled yellow/green patterns suggest viral compromise.", "prescription": "Remove and burn infected plants. Disinfect tools."}
     ]
 }
 
@@ -78,7 +64,6 @@ def login_required(f):
 @login_required
 def index():
     lang = request.args.get('lang', 'en')
-    # Localization: Gulu City
     weather_data = {'city': 'Gulu City', 'temp': '31', 'desc': 'Sunny & Warm'}
     t_content = {'title': 'Agri-Guard Intelligence'}
     return render_template('index.html', current_lang=lang, weather=weather_data, t=t_content)
@@ -90,17 +75,18 @@ def login():
         pw = request.form.get('password')
         try:
             conn = sqlite3.connect(DB_PATH)
-            # Row factory allows accessing columns by name like row['password']
             conn.row_factory = sqlite3.Row
             row = conn.execute("SELECT password FROM users WHERE username = ?", (user,)).fetchone()
             conn.close()
+            
             if row and check_password_hash(row['password'], pw):
                 session['logged_in'] = True
                 session['username'] = user
                 return redirect(url_for('index'))
-            flash("Invalid Credentials", "error")
+            
+            return render_template('login.html', error="Invalid Credentials")
         except Exception as e:
-            return f"Login Error: {str(e)}"
+            return render_template('login.html', error=f"Database error: {str(e)}")
     return render_template('login.html')
 
 @app.route('/signup', methods=['GET', 'POST'])
@@ -116,8 +102,13 @@ def signup():
             conn.close()
             return redirect(url_for('login'))
         except:
-            flash("User already exists", "error")
-    return render_template('signup.html')
+            return render_template('login.html', error="Username already exists")
+    return redirect(url_for('login'))
+
+@app.route('/forgot_password', methods=['POST'])
+def forgot_password():
+    # Fixes the 500 error by handling the form request from login.html
+    return render_template('login.html', error="Reset link sent to your email (Demo Mode)")
 
 @app.route('/predict', methods=['POST'])
 @login_required
@@ -126,7 +117,6 @@ def predict():
         file = request.files.get('file')
         if not file: return redirect(url_for('index'))
         
-        # Determine result randomly for demo purposes
         category = "INFECTED" if random.random() > 0.4 else "HEALTHY"
         result = random.choice(KNOWLEDGE_BASE[category])
         
@@ -134,7 +124,6 @@ def predict():
         encoded_img = base64.b64encode(img_bytes).decode('utf-8')
         user_image = f"data:image/jpeg;base64,{encoded_img}"
 
-        # Must re-pass weather and t_content so the UI stays consistent after POST
         weather_data = {'city': 'Gulu City', 'temp': '31', 'desc': 'Sunny & Warm'}
         t_content = {'title': 'Agri-Guard Intelligence'}
 
