@@ -20,18 +20,18 @@ os.makedirs(os.path.join(os.getcwd(), 'static', 'uploads'), exist_ok=True)
 ADMIN_USER = "admin"
 ADMIN_PASS = "StLawrence2026"
 
-# --- 🔑 API KEYS (Ensure these are in Render Environment Variables) ---
+# --- 🔑 API KEYS ---
 HF_TOKEN = os.getenv("HUGGINGFACE_API_KEY")
 OPENROUTER_KEY = os.getenv("OPENROUTER_API_KEY")
 
-# Model IDs - Using the "Lighter" Vision Transformer (ViT)
-HF_MODEL_ID = "google/vit-base-patch16-224" 
+# Model IDs
+HF_MODEL_ID = "google/vit-base-patch16-224"
 OR_MODEL_ID = "meta-llama/llama-3.1-8b-instruct:free"
 
 # --- 🧪 AI CORE FUNCTIONS ---
 
 def detect_disease(image_bytes):
-    """Sends image to Hugging Face with deep stability guards."""
+    """Sends image to Hugging Face with deep stability and JSON guards."""
     api_url = f"https://api-inference.huggingface.co/models/{HF_MODEL_ID}"
     headers = {
         "Authorization": f"Bearer {HF_TOKEN}",
@@ -39,26 +39,36 @@ def detect_disease(image_bytes):
         "X-Use-Cache": "false"
     }
     
-    # Retry loop to handle "IncompleteRead" or 503 errors
     for attempt in range(3):
         try:
-            # stream=True ensures the data connection doesn't break prematurely
-            response = requests.post(api_url, headers=headers, data=image_bytes, timeout=30, stream=True)
+            # Use a longer timeout for the "Cold Start"
+            response = requests.post(api_url, headers=headers, data=image_bytes, timeout=40)
             
-            if response.status_code == 503: # Model is waking up
+            # 1. Check if the server actually sent back a successful response
+            if response.status_code != 200:
+                print(f"API Attempt {attempt+1} failed with status {response.status_code}")
                 time.sleep(5)
                 continue
-                
-            result = response.json()
+
+            # 2. SAFELY try to decode JSON to prevent the 'char 0' error
+            try:
+                result = response.json()
+            except ValueError:
+                print("Received invalid JSON. Retrying...")
+                time.sleep(2)
+                continue
             
-            # If model is still loading, wait based on their estimated time
+            # 3. Handle 'Model Loading' scenario
             if isinstance(result, dict) and 'estimated_time' in result:
-                wait_time = result.get('estimated_time', 10)
-                time.sleep(min(wait_time, 10))
+                wait_time = result.get('estimated_time', 12)
+                print(f"Model is waking up. Waiting {wait_time}s...")
+                time.sleep(min(wait_time, 12))
                 continue
                 
             return result
+
         except Exception as e:
+            print(f"Connection error on attempt {attempt+1}: {e}")
             if attempt < 2:
                 time.sleep(3)
                 continue
@@ -74,7 +84,6 @@ def get_treatment_advice(disease_name):
         "Content-Type": "application/json"
     }
     
-    # Prompt optimized for South Sudanese context
     prompt = (f"The crop is identified as '{disease_name}'. "
               "Provide 3 clear, organic treatment steps suitable for a farmer in South Sudan "
               "using local materials like wood ash, neem, or crop rotation.")
@@ -85,10 +94,10 @@ def get_treatment_advice(disease_name):
     }
     
     try:
-        response = requests.post(url, headers=headers, json=payload, timeout=20)
+        response = requests.post(url, headers=headers, json=payload, timeout=25)
         return response.json()['choices'][0]['message']['content']
-    except:
-        return "Apply organic mulch, maintain consistent watering, and consult a local agricultural extension officer."
+    except Exception:
+        return "Apply organic mulch, maintain consistent watering, and consult a local agricultural officer."
 
 # --- 🛠️ HELPERS ---
 
@@ -106,12 +115,15 @@ def get_ui_context(lang='en'):
     }
 
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute('''CREATE TABLE IF NOT EXISTS scans 
-                    (id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                     result TEXT, prescription TEXT, timestamp TEXT)''')
-    conn.commit()
-    conn.close()
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute('''CREATE TABLE IF NOT EXISTS scans 
+                        (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                         result TEXT, prescription TEXT, timestamp TEXT)''')
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"DB Error: {e}")
 
 def login_required(f):
     @wraps(f)
@@ -146,20 +158,20 @@ def predict():
     image_bytes = file.read()
     
     try:
-        # Step 1: Lightweight Detection
+        # Step 1: Detect
         hf_results = detect_disease(image_bytes)
         
         if not hf_results or not isinstance(hf_results, list):
-            raise Exception("AI Engine Timeout")
+            raise Exception("AI Engine Timeout. The model is likely still loading.")
 
         top_result = hf_results[0]
         disease_label = top_result['label'].replace("_", " ").title()
         confidence = round(top_result['score'] * 100, 1)
 
-        # Step 2: Expert Treatment Advice
+        # Step 2: Treat
         treatment = get_treatment_advice(disease_label)
 
-        # Database Log
+        # DB Log
         conn = sqlite3.connect(DB_PATH)
         conn.execute("INSERT INTO scans (result, prescription, timestamp) VALUES (?, ?, ?)",
                      (disease_label, treatment, datetime.now().strftime("%Y-%m-%d %H:%M")))
@@ -169,7 +181,7 @@ def predict():
 
         return render_template('index.html', 
                                prediction=f"{disease_label} ({confidence}%)", 
-                               advice="Biometric Analysis Complete",
+                               advice="Biometric Analysis Successful",
                                prescription=treatment,
                                history=history,
                                **context)
@@ -197,6 +209,5 @@ def logout():
 
 if __name__ == '__main__':
     init_db()
-    # Listen on Render's assigned port
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
