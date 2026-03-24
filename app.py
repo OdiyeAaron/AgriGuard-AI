@@ -11,38 +11,42 @@ from PIL import Image
 from werkzeug.security import generate_password_hash, check_password_hash
 
 # --- 🧠 AI ENGINE SETUP ---
-try:
-    import tensorflow as tf
-    # MobileNetV2 for fast local pre-screening
-    LOCAL_MODEL = tf.keras.applications.MobileNetV2(weights='imagenet')
-    LOCAL_AI_READY = True
-except Exception as e:
-    print(f"Local AI Buffer disabled: {e}")
-    LOCAL_AI_READY = False
+# We load the model only when needed to speed up deployment on Render
+LOCAL_MODEL = None
+LOCAL_AI_READY = False
+
+def load_local_ai():
+    global LOCAL_MODEL, LOCAL_AI_READY
+    if LOCAL_MODEL is None:
+        try:
+            import tensorflow as tf
+            LOCAL_MODEL = tf.keras.applications.MobileNetV2(weights='imagenet')
+            LOCAL_AI_READY = True
+        except Exception as e:
+            print(f"Local AI Buffer disabled: {e}")
+            LOCAL_AI_READY = False
 
 app = Flask(__name__)
 app.secret_key = 'st_lawrence_bit_research_2026'
 app.permanent_session_lifetime = timedelta(minutes=60)
 
-# Paths
+# Paths - Using /tmp for Render's ephemeral storage
 DB_PATH = '/tmp/agriguard.db'
 UPLOAD_FOLDER = os.path.join('static', 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# API Configuration (Ensure these are set in your environment)
+# API Configuration
 PLANT_ID_API_KEY = os.getenv("PLANT_ID_API_KEY")
 OPENROUTER_KEY = os.getenv("OPENROUTER_API_KEY")
 
 # --- 🗄️ DATABASE CORE ---
 def init_db():
     conn = sqlite3.connect(DB_PATH)
-    # User Table for Registration
     conn.execute('''CREATE TABLE IF NOT EXISTS users 
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, 
                   username TEXT UNIQUE, 
                   email TEXT, 
                   password TEXT)''')
-    # Scan History Table
     conn.execute('''CREATE TABLE IF NOT EXISTS scans 
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, 
                   user TEXT, crop TEXT, status TEXT, time TEXT)''')
@@ -66,7 +70,7 @@ def analyze_plant(image_bytes):
     encoded = base64.b64encode(image_bytes).decode('ascii')
     payload = {
         "images": [encoded],
-        "latitude": 0.3476, "longitude": 32.5825, # Kampala Coordinates
+        "latitude": 0.3476, "longitude": 32.5825,
         "modifiers": ["crops_fast", "disease_all"]
     }
     headers = {"Api-Key": PLANT_ID_API_KEY}
@@ -163,4 +167,6 @@ def logout():
 
 if __name__ == '__main__':
     init_db()
-    app.run(debug=True, port=5000)
+    # CRITICAL: Bind to 0.0.0.0 and use the PORT provided by Render
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
