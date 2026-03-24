@@ -104,6 +104,10 @@
             letter-spacing: 0.5px;
         }
 
+        .lang-bar {
+            margin-bottom: 15px;
+        }
+
         .lang-bar a {
             text-decoration: none;
             font-size: 12px;
@@ -136,6 +140,7 @@
             transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
             text-align: center;
             position: relative;
+            cursor: pointer;
         }
 
         .upload-area:hover { border-color: var(--primary-green); transform: scale(1.02); }
@@ -171,6 +176,7 @@
             padding: 15px;
             border-radius: 12px;
             font-size: 14px;
+            margin-top: 15px;
         }
 
         /* --- 👨‍💻 PROJECT FOOTER --- */
@@ -211,7 +217,7 @@
         <a href="?lang=lg" class="{% if current_lang == 'lg' %}active-lang{% endif %}">LG</a>
     </div>
 
-    <h1 style="font-size: 32px; letter-spacing: -1px;">{{ t.title }}</h1>
+    <h1 style="font-size: 32px; letter-spacing: -1px; margin-bottom: 10px;">{{ t.title }}</h1>
 
     <div class="weather-badge">
         <span>📍 <b>{{ weather.city }}</b></span>
@@ -229,7 +235,7 @@
                 </div>
                 <p><strong>Capture Crop Sample</strong><br><span style="font-size: 12px; color: #64748b;">AI-Ready Diagnostic</span></p>
             </div>
-            <img id="imagePreview" style="width: 100%; border-radius: 15px; display: none;">
+            <img id="imagePreview" style="width: 100%; border-radius: 15px; display: none; object-fit: cover; max-height: 250px;">
             <input type="file" id="fileInput" name="file" accept="image/*" capture="environment" style="display:none;">
         </div>
 
@@ -239,19 +245,17 @@
     {% if prediction %}
     <div class="result-card">
         <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-            <h2 style="color: {{ theme_color }}; margin: 0;">{{ prediction }}</h2>
+            <h2 style="color: var(--primary-green); margin: 0; font-size: 20px;">{{ prediction }}</h2>
             <span style="font-size: 10px; background: #f1f5f9; padding: 4px 8px; border-radius: 5px;">RESULT ID: #{{ range(1000, 9999)|random }}</span>
         </div>
-        <p style="color: #475569; line-height: 1.6;">{{ advice }}</p>
+        <p style="color: #475569; line-height: 1.6; margin-top: 10px;">{{ advice }}</p>
         
         {% if prescription %}
         <div class="prescription-box">
-            <strong style="color: #b45309;">📋 AI PRECRIPTION</strong>
-            <p style="margin: 8px 0 0;">{{ prescription }}</p>
+            <strong style="color: #b45309;">📋 AI PRESCRIPTION</strong>
+            <p style="margin: 8px 0 0; line-height: 1.4;">{{ prescription }}</p>
         </div>
         {% endif %}
-        
-        <img src="{{ image_path }}" style="width: 100%; margin-top: 20px; border-radius: 15px; filter: grayscale(20%);">
     </div>
     {% endif %}
 
@@ -287,12 +291,13 @@
 
     function startAnalysis() {
         document.getElementById("loadingOverlay").style.display = "flex";
-        setTimeout(() => { document.getElementById('uploadForm').submit(); }, 1500);
+        // Brief delay to simulate neural network processing before form submission
+        setTimeout(() => { document.getElementById('uploadForm').submit(); }, 1800);
     }
 
-    // Chart.js with dynamic styling
+    // Chart.js initialization
     fetch('/analytics_data').then(res => res.json()).then(data => {
-        if(data.labels.length > 0) {
+        if(data.labels && data.labels.length > 0) {
             new Chart(document.getElementById('statsChart'), {
                 type: 'doughnut',
                 data: {
@@ -304,7 +309,18 @@
                         borderWidth: 0
                     }]
                 },
-                options: { cutouts: '70%', plugins: { legend: { position: 'bottom' } } }
+                options: { 
+                    cutout: '70%', 
+                    plugins: { 
+                        legend: { 
+                            position: 'bottom',
+                            labels: {
+                                boxWidth: 12,
+                                font: { size: 11 }
+                            }
+                        } 
+                    } 
+                }
             });
         }
     });
