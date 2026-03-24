@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login | Agri-Guard AI</title>
+    <title>Access Control | Agri-Guard AI</title>
     <style>
         :root {
             --primary-green: #28a745;
@@ -73,9 +73,12 @@
 
         h2 { 
             color: var(--dark-green); 
-            margin: 0 0 30px; 
+            margin: 0 0 25px; 
             font-weight: 700;
         }
+
+        .form-section { display: none; }
+        .form-section.active { display: block; animation: fadeInUp 0.4s ease; }
 
         input { 
             width: 100%; 
@@ -106,10 +109,8 @@
             font-weight: bold; 
             font-size: 16px;
             cursor: pointer; 
-            margin-top: 20px; 
+            margin-top: 15px; 
             transition: all 0.3s;
-            position: relative;
-            overflow: hidden;
         }
 
         button:hover { 
@@ -117,6 +118,20 @@
             transform: translateY(-3px);
             animation: pulse-green 1.5s infinite;
         }
+
+        .auth-links {
+            margin-top: 20px;
+            font-size: 13px;
+        }
+
+        .auth-links a {
+            color: var(--slu-blue);
+            text-decoration: none;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .auth-links a:hover { text-decoration: underline; }
 
         .error { 
             background: #fff5f5;
@@ -126,14 +141,13 @@
             border-radius: 12px;
             margin-bottom: 20px;
             border: 1px solid #fed7d7;
-            animation: fadeInUp 0.4s ease;
         }
 
         .footer {
             margin-top: 30px;
-            font-size: 12px;
+            font-size: 11px;
             color: #888;
-            opacity: 0.8;
+            line-height: 1.6;
         }
     </style>
 </head>
@@ -141,23 +155,74 @@
     <div class="login-card">
         <div class="leaf-icon">🌿</div>
         <span class="uni-tag">St. Lawrence University</span>
-        <h2>Agri-Guard AI</h2>
+        <h2 id="form-title">Agri-Guard AI</h2>
         
         {% if error %}
             <div class="error">❌ {{ error }}</div>
         {% endif %}
 
-        <form method="POST">
-            <input type="text" name="username" placeholder="Admin Username" required autofocus>
-            <input type="password" name="password" placeholder="Secure Password" required>
-            
-            <button type="submit">Access System</button>
-        </form>
+        <div id="login-form" class="form-section active">
+            <form action="{{ url_for('login') }}" method="POST">
+                <input type="text" name="username" placeholder="Username" required autofocus>
+                <input type="password" name="password" placeholder="Password" required>
+                <button type="submit">Access System</button>
+            </form>
+            <div class="auth-links">
+                <a onclick="toggleForm('signup')">Create Account</a> | 
+                <a onclick="toggleForm('forgot')">Forgot Password?</a>
+            </div>
+        </div>
+
+        <div id="signup-form" class="form-section">
+            <form action="{{ url_for('signup') }}" method="POST">
+                <input type="text" name="username" placeholder="Choose Username" required>
+                <input type="email" name="email" placeholder="Email Address" required>
+                <input type="password" name="password" placeholder="Create Password" required>
+                <button type="submit" style="background: var(--slu-blue);">Register Account</button>
+            </form>
+            <div class="auth-links">
+                <a onclick="toggleForm('login')">Already have an account? Login</a>
+            </div>
+        </div>
+
+        <div id="forgot-form" class="form-section">
+            <p style="font-size: 13px; color: #666; margin-bottom: 15px;">Enter your email to receive a password reset link.</p>
+            <form action="{{ url_for('forgot_password') }}" method="POST">
+                <input type="email" name="email" placeholder="Registered Email" required>
+                <button type="submit">Send Reset Link</button>
+            </form>
+            <div class="auth-links">
+                <a onclick="toggleForm('login')">Back to Login</a>
+            </div>
+        </div>
 
         <div class="footer">
-            System Lead: <strong>Aaron Awas Alpha</strong><br>
-            BIT Department &copy; 2026
+            <strong>BIT RESEARCH PROJECT 2026</strong><br>
+            Department of Computing & IT<br>
+            &copy; All Rights Reserved
         </div>
     </div>
+
+    <script>
+        function toggleForm(type) {
+            // Hide all sections
+            document.querySelectorAll('.form-section').forEach(section => {
+                section.classList.remove('active');
+            });
+
+            // Update title and show target section
+            const title = document.getElementById('form-title');
+            if (type === 'login') {
+                title.innerText = 'Agri-Guard AI';
+                document.getElementById('login-form').classList.add('active');
+            } else if (type === 'signup') {
+                title.innerText = 'New Registration';
+                document.getElementById('signup-form').classList.add('active');
+            } else if (type === 'forgot') {
+                title.innerText = 'Reset Access';
+                document.getElementById('forgot-form').classList.add('active');
+            }
+        }
+    </script>
 </body>
 </html>
