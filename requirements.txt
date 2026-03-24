@@ -1,3 +1,4 @@
 Flask
 replicate
 Pillow
+requests
