@@ -1,18 +1,15 @@
 import os
 import io
-import sqlite3
-import requests
-import time
-import replicate  # 🔥 New official SDK
+import numpy as np
+import tensorflow as tf
+from PIL import Image
 from flask import Flask, render_template, request, session, redirect, url_for, jsonify
+import requests
 from datetime import datetime, timedelta
 from functools import wraps
-from PIL import Image
 
 app = Flask(__name__)
-
-# --- 🔐 CONFIG ---
-app.secret_key = 'agri_guard_alpha_2026_st_lawrence'
+app.secret_key = 'agriguard_local_alpha_2026'
 app.permanent_session_lifetime = timedelta(minutes=60)
 
 # Paths
@@ -23,90 +20,51 @@ os.makedirs(os.path.join(os.getcwd(), 'static', 'uploads'), exist_ok=True)
 ADMIN_USER = "admin"
 ADMIN_PASS = "StLawrence2026"
 
-# --- 🔑 API KEYS ---
-# Ensure REPLICATE_API_TOKEN is added to Render Environment Variables
-REPLICATE_API_TOKEN = os.getenv("REPLICATE_API_TOKEN")
+# --- 🧠 LOCAL AI SETUP (MobileNetV2) ---
+# We load the model once when the app starts to save time
+print("Loading Local Neural Engine...")
+model = tf.keras.applications.MobileNetV2(weights='imagenet')
+
+def predict_local(image_bytes):
+    """Processes image locally using MobileNetV2 for instant results."""
+    img = Image.open(io.BytesIO(image_bytes)).convert('RGB')
+    img = img.resize((224, 224))
+    
+    # Preprocessing for MobileNetV2
+    img_array = np.array(img)
+    img_array = np.expand_dims(img_array, axis=0)
+    img_array = tf.keras.applications.mobilenet_v2.preprocess_input(img_array)
+    
+    # Run Prediction
+    predictions = model.predict(img_array)
+    decoded = tf.keras.applications.mobilenet_v2.decode_predictions(predictions, top=1)[0]
+    
+    # Return (Label, Confidence Score)
+    label = decoded[0][1].replace("_", " ").title()
+    confidence = round(float(decoded[0][2]) * 100, 1)
+    return label, confidence
+
+# --- 🔑 EXTERNAL ADVICE (OpenRouter) ---
 OPENROUTER_KEY = os.getenv("OPENROUTER_API_KEY")
 
-# Model IDs
-# Using BLIP - a highly stable Vision-to-Text model
-REPLICATE_MODEL = "salesforce/blip:2e1eb2c119a08990e39ff878196e838e4a5d3c52f6d4d444452219717651a027"
-OR_MODEL_ID = "meta-llama/llama-3.1-8b-instruct:free"
-
-# --- ⚡ STABILITY FUNCTIONS ---
-
-def compress_image(image_file):
-    """Reduces image size for faster cloud processing."""
-    img = Image.open(image_file)
-    img = img.convert('RGB')
-    img = img.resize((400, 400)) # Replicate handles slightly larger images better
-    
-    buffer = io.BytesIO()
-    img.save(buffer, format="JPEG", quality=75) 
-    buffer.seek(0)
-    return buffer
-
-def detect_disease_replicate(image_buffer):
-    """Uses Replicate SDK for a stable connection."""
-    try:
-        output = replicate.run(
-            REPLICATE_MODEL,
-            input={
-                "image": image_buffer,
-                "task": "image_captioning",
-                "question": "Identify the specific crop disease or health status of this plant leaf."
-            }
-        )
-        return str(output).replace("caption: ", "")
-    except Exception as e:
-        print(f"Replicate Error: {e}")
-        return None
-
-def get_treatment_advice(analysis_text):
-    """Gets organic treatment via OpenRouter."""
+def get_treatment_advice(disease_name):
+    """Gets expert organic treatment via OpenRouter."""
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {"Authorization": f"Bearer {OPENROUTER_KEY}", "Content-Type": "application/json"}
     
-    prompt = (f"The AI detected: '{analysis_text}'. "
-              "If this is a disease, provide 3 clear, organic treatment steps for a farmer in South Sudan. "
-              "If the leaf is healthy, give 1 maintenance tip.")
-    
-    payload = {
-        "model": OR_MODEL_ID,
-        "messages": [{"role": "user", "content": prompt}]
-    }
+    prompt = (f"The AI detected: '{disease_name}'. Provide 3 organic treatment steps "
+              "suitable for a farmer in South Sudan using local materials like neem or wood ash.")
     
     try:
-        response = requests.post(url, headers=headers, json=payload, timeout=25)
-        return response.json()['choices'][0]['message']['content']
-    except Exception:
-        return "Apply organic mulch and ensure proper spacing between crops."
+        res = requests.post(url, headers=headers, json={
+            "model": "meta-llama/llama-3.1-8b-instruct:free",
+            "messages": [{"role": "user", "content": prompt}]
+        }, timeout=15)
+        return res.json()['choices'][0]['message']['content']
+    except:
+        return "Ensure proper soil drainage and apply organic compost to strengthen the plant."
 
-# --- 🛠️ HELPERS ---
-
-def get_ui_context(lang='en'):
-    translations = {
-        'en': {'title': 'Agri-Guard Intelligence'},
-        'sw': {'title': 'Agri-Guard Swahili'},
-        'lg': {'title': 'Agri-Guard Luganda'}
-    }
-    return {
-        't': translations.get(lang, translations['en']),
-        'current_lang': lang,
-        'weather': {'city': 'Kampala', 'temp': '28', 'desc': 'Sunny'},
-        'theme_color': '#28a745'
-    }
-
-def init_db():
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        conn.execute('''CREATE TABLE IF NOT EXISTS scans 
-                        (id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                         result TEXT, prescription TEXT, timestamp TEXT)''')
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        print(f"DB Error: {e}")
+# --- 🛠️ HELPERS & AUTH ---
 
 def login_required(f):
     @wraps(f)
@@ -120,66 +78,50 @@ def login_required(f):
 @app.route('/')
 @login_required
 def index():
-    lang = request.args.get('lang', 'en')
-    context = get_ui_context(lang)
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        history = conn.execute("SELECT result, timestamp FROM scans ORDER BY id DESC LIMIT 5").fetchall()
-        conn.close()
-    except: history = []
-    return render_template('index.html', history=history, **context)
+    # Basic UI Context
+    context = {
+        't': {'title': 'Agri-Guard Intelligence'},
+        'weather': {'city': 'Kampala', 'temp': '28', 'desc': 'Sunny'},
+        'current_lang': 'en'
+    }
+    return render_template('index.html', **context)
 
 @app.route('/predict', methods=['POST'])
 @login_required
 def predict():
-    lang = request.form.get('lang', 'en')
-    context = get_ui_context(lang)
     file = request.files.get('file')
-    
     if not file: return redirect(url_for('index'))
-    
+
     try:
-        # Step 1: Compress
-        image_buffer = compress_image(file)
+        image_bytes = file.read()
         
-        # Step 2: Detect via Replicate
-        analysis = detect_disease_replicate(image_buffer)
+        # 🥇 STEP 1: Instant Local Prediction
+        label, confidence = predict_local(image_bytes)
         
-        if not analysis:
-            raise Exception("AI Cloud recalibrating.")
-
-        # Step 3: Treatment
-        treatment = get_treatment_advice(analysis)
-
-        # DB Log
-        conn = sqlite3.connect(DB_PATH)
-        conn.execute("INSERT INTO scans (result, prescription, timestamp) VALUES (?, ?, ?)",
-                     (analysis.title(), treatment, datetime.now().strftime("%Y-%m-%d %H:%M")))
-        conn.commit()
-        history = conn.execute("SELECT result, timestamp FROM scans ORDER BY id DESC LIMIT 5").fetchall()
-        conn.close()
+        # 🥈 STEP 2: Cloud-Based Treatment Advice
+        treatment = get_treatment_advice(label)
 
         return render_template('index.html', 
-                               prediction=analysis.upper(), 
-                               advice="REPLICATE ENGINE ANALYSIS COMPLETE",
+                               prediction=f"{label} ({confidence}%)", 
+                               advice="LOCAL NEURAL ENGINE ANALYSIS COMPLETE",
                                prescription=treatment,
-                               history=history,
-                               **context)
+                               t={'title': 'Agri-Guard AI'},
+                               weather={'city': 'Kampala', 'temp': '28', 'desc': 'Sunny'})
 
     except Exception as e:
+        print(f"Error: {e}")
         return render_template('index.html', 
-                               prediction="⚠️ PROCESSING INTERRUPTED", 
-                               advice="The AI engine is currently busy.",
-                               prescription="Please rescan the leaf to establish a fresh neural link.",
-                               history=[],
-                               **context)
+                               prediction="⚠️ SENSOR ERROR", 
+                               advice="Local analysis failed.",
+                               prescription="Ensure the image is clear and try again.",
+                               t={'title': 'Agri-Guard AI'},
+                               weather={'city': 'Kampala', 'temp': '28', 'desc': 'Cloudy'})
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         if request.form.get('username') == ADMIN_USER and request.form.get('password') == ADMIN_PASS:
             session['logged_in'] = True
-            init_db()
             return redirect(url_for('index'))
     return render_template('login.html')
 
@@ -189,6 +131,5 @@ def logout():
     return redirect(url_for('login'))
 
 if __name__ == '__main__':
-    init_db()
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
