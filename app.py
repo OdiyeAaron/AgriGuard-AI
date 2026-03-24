@@ -3,10 +3,11 @@ import io
 import sqlite3
 import requests
 import time
+import replicate  # 🔥 New official SDK
 from flask import Flask, render_template, request, session, redirect, url_for, jsonify
 from datetime import datetime, timedelta
 from functools import wraps
-from PIL import Image  # 🔥 Essential for compression
+from PIL import Image
 
 app = Flask(__name__)
 
@@ -14,7 +15,7 @@ app = Flask(__name__)
 app.secret_key = 'agri_guard_alpha_2026_st_lawrence'
 app.permanent_session_lifetime = timedelta(minutes=60)
 
-# Paths (Using /tmp for Render DB stability)
+# Paths
 DB_PATH = '/tmp/agriguard.db'
 os.makedirs(os.path.join(os.getcwd(), 'static', 'uploads'), exist_ok=True)
 
@@ -23,78 +24,52 @@ ADMIN_USER = "admin"
 ADMIN_PASS = "StLawrence2026"
 
 # --- 🔑 API KEYS ---
-HF_TOKEN = os.getenv("HUGGINGFACE_API_KEY")
+# Ensure REPLICATE_API_TOKEN is added to Render Environment Variables
+REPLICATE_API_TOKEN = os.getenv("REPLICATE_API_TOKEN")
 OPENROUTER_KEY = os.getenv("OPENROUTER_API_KEY")
 
 # Model IDs
-HF_MODEL_ID = "google/vit-base-patch16-224"
+# Using BLIP - a highly stable Vision-to-Text model
+REPLICATE_MODEL = "salesforce/blip:2e1eb2c119a08990e39ff878196e838e4a5d3c52f6d4d444452219717651a027"
 OR_MODEL_ID = "meta-llama/llama-3.1-8b-instruct:free"
 
 # --- ⚡ STABILITY FUNCTIONS ---
 
 def compress_image(image_file):
-    """
-    Reduces image size to 224x224. 
-    This prevents 'IncompleteRead' errors by making the upload tiny.
-    """
+    """Reduces image size for faster cloud processing."""
     img = Image.open(image_file)
     img = img.convert('RGB')
-    img = img.resize((224, 224)) 
+    img = img.resize((400, 400)) # Replicate handles slightly larger images better
     
     buffer = io.BytesIO()
-    img.save(buffer, format="JPEG", quality=70) 
-    return buffer.getvalue()
+    img.save(buffer, format="JPEG", quality=75) 
+    buffer.seek(0)
+    return buffer
 
-def detect_disease(image_bytes):
-    """Sends image to Hugging Face with deep stability and JSON guards."""
-    api_url = f"https://api-inference.huggingface.co/models/{HF_MODEL_ID}"
-    headers = {
-        "Authorization": f"Bearer {HF_TOKEN}",
-        "X-Wait-For-Model": "true",
-        "X-Use-Cache": "false"
-    }
-    
-    for attempt in range(3):
-        try:
-            # stream=True ensures the data connection doesn't break prematurely
-            response = requests.post(api_url, headers=headers, data=image_bytes, timeout=40, stream=True)
-            
-            if response.status_code != 200:
-                print(f"API Attempt {attempt+1} failed: {response.status_code}")
-                time.sleep(5)
-                continue
+def detect_disease_replicate(image_buffer):
+    """Uses Replicate SDK for a stable connection."""
+    try:
+        output = replicate.run(
+            REPLICATE_MODEL,
+            input={
+                "image": image_buffer,
+                "task": "image_captioning",
+                "question": "Identify the specific crop disease or health status of this plant leaf."
+            }
+        )
+        return str(output).replace("caption: ", "")
+    except Exception as e:
+        print(f"Replicate Error: {e}")
+        return None
 
-            try:
-                result = response.json()
-            except ValueError:
-                time.sleep(2)
-                continue
-            
-            if isinstance(result, dict) and 'estimated_time' in result:
-                wait_time = result.get('estimated_time', 12)
-                time.sleep(min(wait_time, 12))
-                continue
-                
-            return result
-
-        except Exception as e:
-            if attempt < 2:
-                time.sleep(3)
-                continue
-            raise e
-    return None
-
-def get_treatment_advice(disease_name):
-    """Gets localized treatment from OpenRouter."""
+def get_treatment_advice(analysis_text):
+    """Gets organic treatment via OpenRouter."""
     url = "https://openrouter.ai/api/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {OPENROUTER_KEY}",
-        "Content-Type": "application/json"
-    }
+    headers = {"Authorization": f"Bearer {OPENROUTER_KEY}", "Content-Type": "application/json"}
     
-    prompt = (f"The crop is identified as '{disease_name}'. "
-              "Provide 3 clear, organic treatment steps suitable for a farmer in South Sudan "
-              "using local materials like wood ash or neem.")
+    prompt = (f"The AI detected: '{analysis_text}'. "
+              "If this is a disease, provide 3 clear, organic treatment steps for a farmer in South Sudan. "
+              "If the leaf is healthy, give 1 maintenance tip.")
     
     payload = {
         "model": OR_MODEL_ID,
@@ -105,7 +80,7 @@ def get_treatment_advice(disease_name):
         response = requests.post(url, headers=headers, json=payload, timeout=25)
         return response.json()['choices'][0]['message']['content']
     except Exception:
-        return "Apply organic mulch, maintain consistent watering, and consult a local agricultural officer."
+        return "Apply organic mulch and ensure proper spacing between crops."
 
 # --- 🛠️ HELPERS ---
 
@@ -164,43 +139,38 @@ def predict():
     if not file: return redirect(url_for('index'))
     
     try:
-        # 🥇 NEW: Compress image before sending to AI
-        image_bytes = compress_image(file)
+        # Step 1: Compress
+        image_buffer = compress_image(file)
         
-        # Step 1: Detect
-        hf_results = detect_disease(image_bytes)
+        # Step 2: Detect via Replicate
+        analysis = detect_disease_replicate(image_buffer)
         
-        if not hf_results or not isinstance(hf_results, list):
-            raise Exception("AI Engine is currently warming up.")
+        if not analysis:
+            raise Exception("AI Cloud recalibrating.")
 
-        top_result = hf_results[0]
-        disease_label = top_result['label'].replace("_", " ").title()
-        confidence = round(top_result['score'] * 100, 1)
-
-        # Step 2: Treat
-        treatment = get_treatment_advice(disease_label)
+        # Step 3: Treatment
+        treatment = get_treatment_advice(analysis)
 
         # DB Log
         conn = sqlite3.connect(DB_PATH)
         conn.execute("INSERT INTO scans (result, prescription, timestamp) VALUES (?, ?, ?)",
-                     (disease_label, treatment, datetime.now().strftime("%Y-%m-%d %H:%M")))
+                     (analysis.title(), treatment, datetime.now().strftime("%Y-%m-%d %H:%M")))
         conn.commit()
         history = conn.execute("SELECT result, timestamp FROM scans ORDER BY id DESC LIMIT 5").fetchall()
         conn.close()
 
         return render_template('index.html', 
-                               prediction=f"{disease_label} ({confidence}%)", 
-                               advice="Analysis Complete",
+                               prediction=analysis.upper(), 
+                               advice="REPLICATE ENGINE ANALYSIS COMPLETE",
                                prescription=treatment,
                                history=history,
                                **context)
 
     except Exception as e:
-        # 🥈 NEW: User-friendly error message (Hide technical jargon)
         return render_template('index.html', 
                                prediction="⚠️ PROCESSING INTERRUPTED", 
                                advice="The AI engine is currently busy.",
-                               prescription="Please rescan. This is common when the neural engine is warming up.",
+                               prescription="Please rescan the leaf to establish a fresh neural link.",
                                history=[],
                                **context)
 
