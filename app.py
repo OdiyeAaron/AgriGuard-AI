@@ -24,9 +24,11 @@ OPENROUTER_KEY = os.getenv("OPENROUTER_API_KEY")
 # --- 🗄️ DATABASE CORE ---
 def init_db():
     try:
-        # Ensure directory exists for /tmp/ storage
+        # Ensure the /tmp/ directory exists
         os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+        
         conn = sqlite3.connect(DB_PATH)
+        # Create Tables
         conn.execute('''CREATE TABLE IF NOT EXISTS users 
                      (id INTEGER PRIMARY KEY AUTOINCREMENT, 
                      username TEXT UNIQUE, 
@@ -40,7 +42,7 @@ def init_db():
     except Exception as e:
         print(f"Database Error: {e}")
 
-# Initialize DB immediately
+# Run DB init immediately
 init_db()
 
 # --- 🔐 LOGIN PROTECTION ---
@@ -77,15 +79,8 @@ def analyze_plant(image_bytes):
         data = res.json()
         sug = data['suggestions'][0]
         raw_sci = sug.get('plant_name', '').strip().lower()
-        api_common = sug.get('plant_details', {}).get('common_names', [None])[0]
         
-        if raw_sci in LOCAL_NAMES:
-            crop_name = LOCAL_NAMES[raw_sci]
-        elif api_common:
-            crop_name = api_common.title()
-        else:
-            crop_name = sug['plant_name'].title()
-
+        crop_name = LOCAL_NAMES.get(raw_sci, sug.get('plant_details', {}).get('common_names', [sug['plant_name']])[0]).title()
         health_data = data.get('health_assessment', {})
         status = "HEALTHY"
         if not health_data.get('is_healthy', True) and health_data.get('diseases'):
@@ -97,8 +92,7 @@ def analyze_plant(image_bytes):
 
 def get_llama_advice(crop, status):
     if not OPENROUTER_KEY: return "Apply mulch and check soil moisture."
-    prompt_goal = "Give 3 organic tips to KEEP this plant healthy." if status == "HEALTHY" else f"This plant has {status}. Give 3 organic remedies."
-    prompt = f"You are a Ugandan Agricultural Officer. A farmer scanned a {crop}. Status: {status}. {prompt_goal} Practical for a village, under 70 words, 3 bullets."
+    prompt = f"You are a Ugandan Agricultural Officer. A farmer scanned a {crop}. Status: {status}. Give 3 organic remedies. Under 70 words, 3 bullets."
     
     try:
         res = requests.post("https://openrouter.ai/api/v1/chat/completions", 
@@ -109,46 +103,32 @@ def get_llama_advice(crop, status):
         return "Apply wood ash and consult your sub-county extension officer."
 
 # --- 🚀 ROUTES ---
+
 @app.route('/')
 @login_required
 def index():
     return render_template('index.html', t={'title': 'Agri-Guard Intelligence'})
-
-@app.route('/predict', methods=['POST'])
-@login_required
-def predict():
-    file = request.files.get('file')
-    if not file: return redirect(url_for('index'))
-    img_bytes = file.read()
-    encoded_img = base64.b64encode(img_bytes).decode('utf-8')
-    user_image = f"data:image/jpeg;base64,{encoded_img}"
-    crop, conf, status = analyze_plant(img_bytes)
-    advice = get_llama_advice(crop, status)
-    
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        conn.execute("INSERT INTO scans (user, crop, status, time) VALUES (?, ?, ?, ?)", 
-                     (session['username'], crop, status, datetime.now().strftime("%Y-%m-%d %H:%M")))
-        conn.commit()
-        conn.close()
-    except:
-        pass
-    return render_template('index.html', user_image=user_image, prediction=f"{crop} ({conf}%)", 
-                           advice=f"CONDITION: {status}", prescription=advice, t={'title': 'Agri-Guard Intelligence'})
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         user = request.form.get('username')
         pw = request.form.get('password')
-        conn = sqlite3.connect(DB_PATH)
-        row = conn.execute("SELECT password FROM users WHERE username = ?", (user,)).fetchone()
-        conn.close()
-        if row and check_password_hash(row[0], pw):
-            session['logged_in'] = True
-            session['username'] = user
-            return redirect(url_for('index'))
-        flash("Invalid Credentials", "error")
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute("SELECT password FROM users WHERE username = ?", (user,))
+            row = cursor.fetchone()
+            conn.close()
+            
+            if row and check_password_hash(row[0], pw):
+                session['logged_in'] = True
+                session['username'] = user
+                return redirect(url_for('index'))
+            
+            flash("Invalid Username or Password", "error")
+        except Exception as e:
+            flash("Login System Error", "error")
     return render_template('login.html')
 
 @app.route('/signup', methods=['POST'])
@@ -161,19 +141,41 @@ def signup():
         conn.execute("INSERT INTO users (username, email, password) VALUES (?, ?, ?)", (user, email, pw))
         conn.commit()
         conn.close()
-        flash("Success! Please Login.", "success")
+        flash("Account created! Please login.", "success")
     except:
-        flash("Username taken.", "error")
+        flash("Username already exists.", "error")
     return redirect(url_for('login'))
 
-# --- 🔑 MISSING ROUTE FIXED ---
+@app.route('/predict', methods=['POST'])
+@login_required
+def predict():
+    file = request.files.get('file')
+    if not file: return redirect(url_for('index'))
+    img_bytes = file.read()
+    encoded_img = base64.b64encode(img_bytes).decode('utf-8')
+    user_image = f"data:image/jpeg;base64,{encoded_img}"
+    
+    crop, conf, status = analyze_plant(img_bytes)
+    advice = get_llama_advice(crop, status)
+    
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("INSERT INTO scans (user, crop, status, time) VALUES (?, ?, ?, ?)", 
+                     (session['username'], crop, status, datetime.now().strftime("%Y-%m-%d %H:%M")))
+        conn.commit()
+        conn.close()
+    except:
+        pass
+
+    return render_template('index.html', user_image=user_image, prediction=f"{crop} ({conf}%)", 
+                           advice=f"CONDITION: {status}", prescription=advice, t={'title': 'Agri-Guard Intelligence'})
+
 @app.route('/forgot_password', methods=['GET', 'POST'])
 def forgot_password():
     if request.method == 'POST':
-        email = request.form.get('email')
-        flash(f"Reset link sent to {email} (Simulation)", "success")
+        flash("Reset link sent to your email.", "success")
         return redirect(url_for('login'))
-    return redirect(url_for('login'))
+    return render_template('forgot_password.html')
 
 @app.route('/logout')
 def logout():
