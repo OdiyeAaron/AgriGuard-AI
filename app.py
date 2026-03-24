@@ -1,10 +1,12 @@
 import os
+import io
 import sqlite3
 import requests
 import time
 from flask import Flask, render_template, request, session, redirect, url_for, jsonify
 from datetime import datetime, timedelta
 from functools import wraps
+from PIL import Image  # 🔥 Essential for compression
 
 app = Flask(__name__)
 
@@ -28,7 +30,20 @@ OPENROUTER_KEY = os.getenv("OPENROUTER_API_KEY")
 HF_MODEL_ID = "google/vit-base-patch16-224"
 OR_MODEL_ID = "meta-llama/llama-3.1-8b-instruct:free"
 
-# --- 🧪 AI CORE FUNCTIONS ---
+# --- ⚡ STABILITY FUNCTIONS ---
+
+def compress_image(image_file):
+    """
+    Reduces image size to 224x224. 
+    This prevents 'IncompleteRead' errors by making the upload tiny.
+    """
+    img = Image.open(image_file)
+    img = img.convert('RGB')
+    img = img.resize((224, 224)) 
+    
+    buffer = io.BytesIO()
+    img.save(buffer, format="JPEG", quality=70) 
+    return buffer.getvalue()
 
 def detect_disease(image_bytes):
     """Sends image to Hugging Face with deep stability and JSON guards."""
@@ -41,34 +56,28 @@ def detect_disease(image_bytes):
     
     for attempt in range(3):
         try:
-            # Use a longer timeout for the "Cold Start"
-            response = requests.post(api_url, headers=headers, data=image_bytes, timeout=40)
+            # stream=True ensures the data connection doesn't break prematurely
+            response = requests.post(api_url, headers=headers, data=image_bytes, timeout=40, stream=True)
             
-            # 1. Check if the server actually sent back a successful response
             if response.status_code != 200:
-                print(f"API Attempt {attempt+1} failed with status {response.status_code}")
+                print(f"API Attempt {attempt+1} failed: {response.status_code}")
                 time.sleep(5)
                 continue
 
-            # 2. SAFELY try to decode JSON to prevent the 'char 0' error
             try:
                 result = response.json()
             except ValueError:
-                print("Received invalid JSON. Retrying...")
                 time.sleep(2)
                 continue
             
-            # 3. Handle 'Model Loading' scenario
             if isinstance(result, dict) and 'estimated_time' in result:
                 wait_time = result.get('estimated_time', 12)
-                print(f"Model is waking up. Waiting {wait_time}s...")
                 time.sleep(min(wait_time, 12))
                 continue
                 
             return result
 
         except Exception as e:
-            print(f"Connection error on attempt {attempt+1}: {e}")
             if attempt < 2:
                 time.sleep(3)
                 continue
@@ -80,13 +89,12 @@ def get_treatment_advice(disease_name):
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {OPENROUTER_KEY}",
-        "HTTP-Referer": "https://agri-guard.onrender.com",
         "Content-Type": "application/json"
     }
     
     prompt = (f"The crop is identified as '{disease_name}'. "
               "Provide 3 clear, organic treatment steps suitable for a farmer in South Sudan "
-              "using local materials like wood ash, neem, or crop rotation.")
+              "using local materials like wood ash or neem.")
     
     payload = {
         "model": OR_MODEL_ID,
@@ -154,15 +162,16 @@ def predict():
     file = request.files.get('file')
     
     if not file: return redirect(url_for('index'))
-
-    image_bytes = file.read()
     
     try:
+        # 🥇 NEW: Compress image before sending to AI
+        image_bytes = compress_image(file)
+        
         # Step 1: Detect
         hf_results = detect_disease(image_bytes)
         
         if not hf_results or not isinstance(hf_results, list):
-            raise Exception("AI Engine Timeout. The model is likely still loading.")
+            raise Exception("AI Engine is currently warming up.")
 
         top_result = hf_results[0]
         disease_label = top_result['label'].replace("_", " ").title()
@@ -181,16 +190,18 @@ def predict():
 
         return render_template('index.html', 
                                prediction=f"{disease_label} ({confidence}%)", 
-                               advice="Biometric Analysis Successful",
+                               advice="Analysis Complete",
                                prescription=treatment,
                                history=history,
                                **context)
 
     except Exception as e:
+        # 🥈 NEW: User-friendly error message (Hide technical jargon)
         return render_template('index.html', 
-                               prediction="SIGNAL INTERRUPTED", 
-                               advice="The satellite link is unstable. Please rescan.",
-                               prescription=f"Technical Note: {str(e)}", 
+                               prediction="⚠️ PROCESSING INTERRUPTED", 
+                               advice="The AI engine is currently busy.",
+                               prescription="Please rescan. This is common when the neural engine is warming up.",
+                               history=[],
                                **context)
 
 @app.route('/login', methods=['GET', 'POST'])
