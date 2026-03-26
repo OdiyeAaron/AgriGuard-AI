@@ -12,7 +12,6 @@
             --anim-speed: 0.6s;
         }
 
-        /* --- 🎞️ KEYFRAMES --- */
         @keyframes fadeInUp {
             from { opacity: 0; transform: translateY(30px); }
             to { opacity: 1; transform: translateY(0); }
@@ -22,12 +21,6 @@
             0% { transform: translateY(0px); }
             50% { transform: translateY(-10px); }
             100% { transform: translateY(0px); }
-        }
-
-        @keyframes pulse-green {
-            0% { box-shadow: 0 0 0 0 rgba(40, 167, 69, 0.4); }
-            70% { box-shadow: 0 0 0 15px rgba(40, 167, 69, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(40, 167, 69, 0); }
         }
 
         body { 
@@ -116,7 +109,6 @@
         button:hover { 
             background: #218838; 
             transform: translateY(-3px);
-            animation: pulse-green 1.5s infinite;
         }
 
         .auth-links {
@@ -130,8 +122,6 @@
             font-weight: 600;
             cursor: pointer;
         }
-
-        .auth-links a:hover { text-decoration: underline; }
 
         .error { 
             background: #fff5f5;
@@ -186,11 +176,7 @@
         </div>
 
         <div id="forgot-form" class="form-section">
-            <p style="font-size: 13px; color: #666; margin-bottom: 15px;">Enter your email to receive a password reset link.</p>
-            <form action="{{ url_for('forgot_password') }}" method="POST">
-                <input type="email" name="email" placeholder="Registered Email" required>
-                <button type="submit">Send Reset Link</button>
-            </form>
+            <p style="font-size: 13px; color: #666; margin-bottom: 15px;">Password recovery is managed by the BIT Admin. Please contact the department or use a new account.</p>
             <div class="auth-links">
                 <a onclick="toggleForm('login')">Back to Login</a>
             </div>
@@ -205,12 +191,10 @@
 
     <script>
         function toggleForm(type) {
-            // Hide all sections
             document.querySelectorAll('.form-section').forEach(section => {
                 section.classList.remove('active');
             });
 
-            // Update title and show target section
             const title = document.getElementById('form-title');
             if (type === 'login') {
                 title.innerText = 'Agri-Guard AI';
