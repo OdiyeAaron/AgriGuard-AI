@@ -1,5 +1,5 @@
-flask
-requests
-gunicorn
-Pillow
-werkzeug
+Flask==3.0.0
+requests==2.31.0
+gunicorn==21.2.0
+Pillow==10.1.0
+Werkzeug==3.0.1
