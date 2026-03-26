@@ -50,31 +50,21 @@ def get_live_weather():
         pass
     return {'city': 'Gulu City', 'temp': '31', 'desc': 'Cloudy'}
 
-# --- 📋 FULL KNOWLEDGE BASE (20 Scenarios) ---
+# --- 📋 KNOWLEDGE BASE ---
 KNOWLEDGE_BASE = {
     "HEALTHY": [
-        {"status": "VIBRANT (98%)", "advice": "Optimal chlorophyll density. Photosynthetic rate peaked.", "prescription": "Maintain current irrigation."},
-        {"status": "STABLE (92%)", "advice": "Consistent leaf turgor pressure. No cellular stress.", "prescription": "Standard monitoring."},
-        {"status": "ROBUST (95%)", "advice": "Strong stem vascularity and healthy stomata.", "prescription": "Continue nutrient cycle."},
-        {"status": "CLEAN (90%)", "advice": "Zero fungal spores found in neural scan.", "prescription": "Apply preventive neem wash."},
-        {"status": "FLOURISHING (97%)", "advice": "Biometric signature shows high metabolic efficiency.", "prescription": "Ensure sunlight exposure."},
-        {"status": "HYDRATED (93%)", "advice": "Excellent water-to-tissue ratio.", "prescription": "Monitor soil pH weekly."},
-        {"status": "DORMANT (88%)", "advice": "Plant is healthy but in a low-growth phase.", "prescription": "Focus on root minerals."},
-        {"status": "PRISTINE (99%)", "advice": "Perfect biological symmetry detected.", "prescription": "Archive as 'Gold Standard'."},
-        {"status": "RELIANT (91%)", "advice": "Natural plant defenses are active.", "prescription": "Introduce beneficial insects."},
-        {"status": "EFFICIENT (94%)", "advice": "Nutrient absorption in top 5th percentile.", "prescription": "Continue watering techniques."}
+        {"status": "VIBRANT (98%)", "advice": "Optimal chlorophyll density detected.", "prescription": "Maintain current irrigation."},
+        {"status": "STABLE (92%)", "advice": "Consistent leaf turgor pressure.", "prescription": "Standard monitoring."},
+        {"status": "ROBUST (95%)", "advice": "Strong stem vascularity.", "prescription": "Continue nutrient cycle."},
+        {"status": "CLEAN (90%)", "advice": "Zero fungal signatures found.", "prescription": "Apply neem wash."},
+        {"status": "PRISTINE (99%)", "advice": "Perfect biological symmetry.", "prescription": "Archive as Gold Standard."}
     ],
     "INFECTED": [
-        {"status": "FUNGAL BLIGHT (87%)", "advice": "Necrotic lesions detected. Early fungal spread.", "prescription": "Apply copper-based fungicide."},
-        {"status": "BACTERIAL WILT (82%)", "advice": "Vascular compromise detected.", "prescription": "Isolate area; avoid overhead watering."},
-        {"status": "ARMYWORM ATTACK (89%)", "advice": "Irregular margins match Armyworm patterns.", "prescription": "Apply Bacillus thuringiensis (Bt)."},
-        {"status": "POWDERY MILDEW (78%)", "advice": "White mycelium patches detected on surface.", "prescription": "Spray baking soda and soap mixture."},
-        {"status": "RUST DISEASE (75%)", "advice": "Orange/Brown pustules found. Spores active.", "prescription": "Dust with sulfur powder."},
-        {"status": "APHID INFESTATION (84%)", "advice": "Cluster signatures suggest sap-suckers.", "prescription": "Use insecticidal soap spray."},
-        {"status": "MOSAIC VIRUS (71%)", "advice": "Mottled yellow patterns suggest viral compromise.", "prescription": "Burn infected plants; disinfect tools."},
-        {"status": "NUTRIENT DEFICIENCY (68%)", "advice": "Interveinal chlorosis suggests Magnesium lack.", "prescription": "Apply Epsom salts to soil base."},
-        {"status": "LEAF SPOT (80%)", "advice": "Circular brown spots with yellow halos.", "prescription": "Apply broad-spectrum fungicide."},
-        {"status": "SOOTY MOLD (74%)", "advice": "Black sticky film indicates pest infection.", "prescription": "Treat Whiteflies/Aphids immediately."}
+        {"status": "FUNGAL BLIGHT (87%)", "advice": "Necrotic lesions detected.", "prescription": "Apply copper-based fungicide."},
+        {"status": "BACTERIAL WILT (82%)", "advice": "Vascular compromise detected.", "prescription": "Isolate area immediately."},
+        {"status": "ARMYWORM ATTACK (89%)", "advice": "Feeding patterns match Armyworm.", "prescription": "Apply Bt treatment."},
+        {"status": "MOSAIC VIRUS (71%)", "advice": "Mottled yellow patterns found.", "prescription": "Remove and burn plant."},
+        {"status": "LEAF SPOT (80%)", "advice": "Circular brown spots detected.", "prescription": "Apply broad-spectrum fungicide."}
     ]
 }
 
@@ -138,20 +128,17 @@ def predict():
         img_bytes = file.read()
         img = Image.open(io.BytesIO(img_bytes)).convert('RGB')
         
-        # --- 🛡️ GREEN CHROMATIC FILTER ---
         pixels = img.getdata()
         green_px = sum(1 for r, g, b in pixels if g > r and g > b and g > 45)
         green_ratio = (green_px / len(pixels)) * 100
 
         if green_ratio < 4:
             return render_template('index.html', 
-                                   error="⚠️ SCAN REJECTED: No botanical signatures detected. Please scan a valid crop sample.",
+                                   error="⚠️ SCAN REJECTED: No botanical signatures detected.",
                                    weather=get_live_weather(), t={'title': 'Agri-Guard Intelligence'})
 
-        # --- AI SELECTION ---
         category = "INFECTED" if random.random() > 0.4 else "HEALTHY"
         result = random.choice(KNOWLEDGE_BASE[category])
-        
         user_image = f"data:image/jpeg;base64,{base64.b64encode(img_bytes).decode('utf-8')}"
 
         return render_template('index.html', prediction=result['status'], advice=result['advice'], 
