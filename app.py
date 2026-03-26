@@ -112,11 +112,17 @@ def signup():
         try:
             conn = sqlite3.connect(DB_PATH)
             conn.execute("INSERT INTO users (username, email, password) VALUES (?, ?, ?)", (user, email, pw))
-            conn.commit(); conn.close()
+            conn.commit()
+            conn.close()
             return redirect(url_for('login'))
         except:
             return render_template('login.html', error="User already exists")
     return redirect(url_for('login'))
+
+@app.route('/forgot_password', methods=['POST'])
+def forgot_password():
+    # Placeholder for the missing route that was causing the 500 error
+    return render_template('login.html', error="Recovery system offline. Contact BIT Admin.")
 
 @app.route('/predict', methods=['POST'])
 @login_required
@@ -157,7 +163,8 @@ def analytics_data():
 
 @app.route('/logout')
 def logout():
-    session.clear(); return redirect(url_for('login'))
+    session.clear()
+    return redirect(url_for('login'))
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))
